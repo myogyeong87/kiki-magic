@@ -118,23 +118,51 @@ const ALL_PERIODS = [1, 2, 3, 4, 5, 6, 7];
 export default function App() {
   const [step, setStep] = useState(1);
 
+  // localStorage에서 저장된 설정 불러오기
+  function loadSaved(key, fallback) {
+    try {
+      const v = localStorage.getItem(key);
+      return v ? JSON.parse(v) : fallback;
+    } catch { return fallback; }
+  }
+
   // 학급: {name, size}
-  const [classes, setClasses] = useState([
+  const [classes, setClasses] = useState(() => loadSaved("kiki_classes", [
     { name: "1학년1반", size: 28 },
     { name: "1학년2반", size: 30 },
     { name: "1학년3반", size: 27 },
-  ]);
+  ]));
   const [newCls, setNewCls] = useState({ name: "", size: 30 });
 
   // 체험활동: {id, name, capacity}
-  const [activities, setActivities] = useState([
+  const [activities, setActivities] = useState(() => loadSaved("kiki_activities", [
     { id: 1, name: "도예 체험", capacity: 30 },
     { id: 2, name: "천연 염색", capacity: 25 },
     { id: 3, name: "전통 요리", capacity: 30 },
-  ]);
+  ]));
   const [newAct, setNewAct] = useState({ name: "", capacity: 30 });
 
-  const [selectedPeriods, setSelectedPeriods] = useState([3, 4]);
+  const [selectedPeriods, setSelectedPeriods] = useState(() => loadSaved("kiki_periods", [3, 4]));
+
+  // 설정 변경 시 자동 저장
+  useEffect(() => { localStorage.setItem("kiki_classes", JSON.stringify(classes)); }, [classes]);
+  useEffect(() => { localStorage.setItem("kiki_activities", JSON.stringify(activities)); }, [activities]);
+  useEffect(() => { localStorage.setItem("kiki_periods", JSON.stringify(selectedPeriods)); }, [selectedPeriods]);
+
+  // 설정 초기화
+  const resetSettings = () => {
+    if (!window.confirm("설정을 초기화할까요? 학급, 체험활동, 교시가 모두 기본값으로 돌아가요.")) return;
+    const defaultClasses = [{ name: "1학년1반", size: 28 }, { name: "1학년2반", size: 30 }, { name: "1학년3반", size: 27 }];
+    const defaultActivities = [{ id: 1, name: "도예 체험", capacity: 30 }, { id: 2, name: "천연 염색", capacity: 25 }, { id: 3, name: "전통 요리", capacity: 30 }];
+    const defaultPeriods = [3, 4];
+    setClasses(defaultClasses);
+    setActivities(defaultActivities);
+    setSelectedPeriods(defaultPeriods);
+    setStep(1);
+    localStorage.setItem("kiki_classes", JSON.stringify(defaultClasses));
+    localStorage.setItem("kiki_activities", JSON.stringify(defaultActivities));
+    localStorage.setItem("kiki_periods", JSON.stringify(defaultPeriods));
+  };
 
   // 배분표: alloc[classIdx][actIdx] = 인원 (수동 수정 가능)
   const [alloc, setAlloc] = useState([]);
@@ -450,7 +478,13 @@ export default function App() {
         {/* ══ STEP 1 ══ */}
         {step === 1 && (<>
           <Card>
-            <h2 style={{ margin: "0 0 18px", fontSize: 15, color: C.primary }}>⚙️ 기본 설정</h2>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
+              <h2 style={{ margin: 0, fontSize: 15, color: C.primary }}>⚙️ 기본 설정</h2>
+              <button onClick={resetSettings} style={{
+                padding: "5px 12px", borderRadius: 8, border: `1px solid ${C.border}`,
+                background: C.bg, color: C.muted, fontSize: 12, cursor: "pointer", fontFamily: "inherit",
+              }}>🔄 초기화</button>
+            </div>
 
             {/* 교시 */}
             <div style={{ marginBottom: 22 }}>
@@ -854,7 +888,7 @@ export default function App() {
 
       {/* 푸터 */}
       <div style={{ textAlign: "center", padding: "32px 0 16px", fontSize: 12, color: C.muted, opacity: .6 }}>
-        Made by 키키쌤 🧙‍♀️
+        Made by <a href="mailto:kkongmu@naver.com" style={{ color: C.muted, textDecoration: "none" }}>키키쌤 🧙‍♀️</a>
       </div>
     </div>
   );

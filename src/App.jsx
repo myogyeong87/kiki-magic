@@ -127,22 +127,14 @@ export default function App() {
   }
 
   // 학급: {name, size}
-  const [classes, setClasses] = useState(() => loadSaved("kiki_classes", [
-    { name: "1학년1반", size: 28 },
-    { name: "1학년2반", size: 30 },
-    { name: "1학년3반", size: 27 },
-  ]));
+  const [classes, setClasses] = useState(() => loadSaved("kiki_classes", []));
   const [newCls, setNewCls] = useState({ name: "", size: 30 });
 
   // 체험활동: {id, name, capacity}
-  const [activities, setActivities] = useState(() => loadSaved("kiki_activities", [
-    { id: 1, name: "도예 체험", capacity: 30 },
-    { id: 2, name: "천연 염색", capacity: 25 },
-    { id: 3, name: "전통 요리", capacity: 30 },
-  ]));
+  const [activities, setActivities] = useState(() => loadSaved("kiki_activities", []));
   const [newAct, setNewAct] = useState({ name: "", capacity: 30 });
 
-  const [selectedPeriods, setSelectedPeriods] = useState(() => loadSaved("kiki_periods", [3, 4]));
+  const [selectedPeriods, setSelectedPeriods] = useState(() => loadSaved("kiki_periods", []));
 
   // 설정 변경 시 자동 저장
   useEffect(() => { localStorage.setItem("kiki_classes", JSON.stringify(classes)); }, [classes]);
@@ -152,16 +144,16 @@ export default function App() {
   // 설정 초기화
   const resetSettings = () => {
     if (!window.confirm("설정을 초기화할까요? 학급, 체험활동, 교시가 모두 기본값으로 돌아가요.")) return;
-    const defaultClasses = [{ name: "1학년1반", size: 28 }, { name: "1학년2반", size: 30 }, { name: "1학년3반", size: 27 }];
-    const defaultActivities = [{ id: 1, name: "도예 체험", capacity: 30 }, { id: 2, name: "천연 염색", capacity: 25 }, { id: 3, name: "전통 요리", capacity: 30 }];
-    const defaultPeriods = [3, 4];
+    const defaultClasses = [];
+    const defaultActivities = [];
+    const defaultPeriods = [];
     setClasses(defaultClasses);
     setActivities(defaultActivities);
     setSelectedPeriods(defaultPeriods);
     setStep(1);
-    localStorage.setItem("kiki_classes", JSON.stringify(defaultClasses));
-    localStorage.setItem("kiki_activities", JSON.stringify(defaultActivities));
-    localStorage.setItem("kiki_periods", JSON.stringify(defaultPeriods));
+    localStorage.removeItem("kiki_classes");
+    localStorage.removeItem("kiki_activities");
+    localStorage.removeItem("kiki_periods");
   };
 
   // 배분표: alloc[classIdx][actIdx] = 인원 (수동 수정 가능)
@@ -454,14 +446,14 @@ export default function App() {
 
   return (
     <div style={{ minHeight: "100vh", background: C.bg, fontFamily: "'Noto Sans KR','Apple SD Gothic Neo',sans-serif", color: C.text, paddingBottom: 60 }}>
-      <div style={{ background: C.primary, color: "#fff", padding: "20px 40px 18px", borderBottom: `4px solid ${C.accent}` }}>
-        <div style={{ maxWidth: 860, margin: "0 auto" }}>
+      <div style={{ background: C.primary, color: "#fff", padding: "20px clamp(16px, 5vw, 40px) 18px", borderBottom: `4px solid ${C.accent}` }}>
+        <div style={{ maxWidth: 860, margin: "0 auto", width: "100%" }}>
           <div style={{ fontSize: 11, letterSpacing: 2, opacity: .7, marginBottom: 4 }}>진로체험 분반 출석부 자동 생성기</div>
           <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800 }}>출석부 생성 마법사 🧙‍♀️</h1>
         </div>
       </div>
 
-      <div style={{ maxWidth: 860, margin: "0 auto", padding: "22px 40px 0" }}>
+      <div style={{ maxWidth: 860, margin: "0 auto", padding: "22px clamp(16px, 5vw, 40px) 0", boxSizing: "border-box" }}>
         {/* 스텝 바 */}
         <div style={{ display: "flex", alignItems: "center", marginBottom: 22 }}>
           {STEPS.map(({ n, label }, i) => (

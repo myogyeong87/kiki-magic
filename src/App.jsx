@@ -117,6 +117,7 @@ const ALL_PERIODS = [1, 2, 3, 4, 5, 6, 7];
 
 export default function App() {
   const [step, setStep] = useState(1);
+  const [showGuide, setShowGuide] = useState(false);
 
   // localStorage에서 저장된 설정 불러오기
   function loadSaved(key, fallback) {
@@ -448,8 +449,17 @@ export default function App() {
     <div style={{ minHeight: "100vh", background: C.bg, fontFamily: "'Noto Sans KR','Apple SD Gothic Neo',sans-serif", color: C.text, paddingBottom: 60 }}>
       <div style={{ background: C.primary, color: "#fff", padding: "20px clamp(16px, 5vw, 40px) 18px", borderBottom: `4px solid ${C.accent}` }}>
         <div style={{ maxWidth: 860, margin: "0 auto", width: "100%" }}>
-          <div style={{ fontSize: 11, letterSpacing: 2, opacity: .7, marginBottom: 4 }}>진로체험 분반 출석부 자동 생성기</div>
-          <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800 }}>출석부 생성 마법사 🧙‍♀️</h1>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+            <div>
+              <div style={{ fontSize: 11, letterSpacing: 2, opacity: .7, marginBottom: 4 }}>진로체험 분반 출석부 자동 생성기</div>
+              <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800 }}>출석부 생성 마법사 🧙‍♀️</h1>
+            </div>
+            <button onClick={() => setShowGuide(true)} style={{
+              padding: "7px 14px", borderRadius: 20, border: "1.5px solid rgba(255,255,255,0.5)",
+              background: "transparent", color: "#fff", fontSize: 13, fontWeight: 600,
+              cursor: "pointer", fontFamily: "inherit", marginTop: 4, whiteSpace: "nowrap",
+            }}>📖 사용 안내</button>
+          </div>
         </div>
       </div>
 
@@ -877,6 +887,75 @@ export default function App() {
           </div>
         </>)}
       </div>
+
+      {/* 사용 안내 모달 */}
+      {showGuide && (
+        <div style={{
+          position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
+          background: "rgba(0,0,0,0.5)", zIndex: 1000,
+          display: "flex", alignItems: "center", justifyContent: "center",
+          padding: 20,
+        }} onClick={() => setShowGuide(false)}>
+          <div style={{
+            background: C.card, borderRadius: 20, padding: "28px 28px",
+            maxWidth: 560, width: "100%", maxHeight: "85vh", overflowY: "auto",
+            boxShadow: "0 8px 40px rgba(0,0,0,0.2)",
+          }} onClick={e => e.stopPropagation()}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+              <h2 style={{ margin: 0, fontSize: 17, color: C.primary }}>📖 사용 안내</h2>
+              <button onClick={() => setShowGuide(false)} style={{ border: "none", background: "transparent", fontSize: 20, cursor: "pointer", color: C.muted }}>✕</button>
+            </div>
+
+            {[
+              { step: "STEP 1", title: "기본 설정", color: C.primary, items: [
+                "체험활동이 진행되는 교시를 선택하세요 (복수 선택 가능)",
+                "학급 이름과 학급 인원 수를 입력하세요",
+                "체험활동 이름과 전체 정원을 입력하세요",
+                "⚠️ 전체 정원 합계가 전체 학생 수보다 많아야 해요",
+              ]},
+              { step: "STEP 2", title: "배분표 조정 & 서식 다운로드", color: C.primary, items: [
+                "자동으로 계산된 학급별 배분표를 확인하세요",
+                "숫자를 직접 수정할 수 있어요 (정원 초과 시 빨간색 경고)",
+                "서식 다운로드 후 담임선생님들께 배포하세요",
+              ]},
+              { step: "STEP 3", title: "명단 업로드", color: C.primary, items: [
+                "담임선생님들이 입력한 파일을 받아 업로드하세요",
+                "⚠️ 시트 이름(탭) 변경 금지",
+                "⚠️ 체험활동명 오탈자 주의",
+              ]},
+              { step: "STEP 4", title: "출석부 생성", color: C.primary, items: [
+                "체험활동별 출석부를 확인하고 엑셀로 다운로드하세요",
+              ]},
+            ].map(({ step, title, color, items }) => (
+              <div key={step} style={{ marginBottom: 20 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                  <span style={{ background: color, color: "#fff", borderRadius: 20, padding: "2px 10px", fontSize: 11, fontWeight: 700 }}>{step}</span>
+                  <span style={{ fontSize: 14, fontWeight: 700, color: C.primary }}>{title}</span>
+                </div>
+                <ul style={{ margin: 0, paddingLeft: 18 }}>
+                  {items.map((item, i) => (
+                    <li key={i} style={{ fontSize: 13, color: C.text, lineHeight: 1.8 }}>{item}</li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+
+            <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 16, marginTop: 4 }}>
+              <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.8 }}>
+                <strong style={{ color: C.primary }}>📧 문의 및 오류 신고</strong><br />
+                사용 중 문제가 발생하거나 개선 사항이 있으면 편하게 연락 주세요!<br />
+                <a href="mailto:kkongmu@naver.com" style={{ color: C.accent, fontWeight: 600 }}>kkongmu@naver.com</a>
+              </div>
+            </div>
+
+            <button onClick={() => setShowGuide(false)} style={{
+              width: "100%", marginTop: 20, padding: "11px", borderRadius: 10,
+              border: "none", background: C.primary, color: "#fff",
+              fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: "inherit",
+            }}>확인</button>
+          </div>
+        </div>
+      )}
 
       {/* 푸터 */}
       <div style={{ textAlign: "center", padding: "32px 0 16px", fontSize: 12, color: C.muted, opacity: .6 }}>

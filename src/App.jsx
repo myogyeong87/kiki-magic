@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from "react";
-import * as XLSX from "xlsx";
+import * as XLSX from "xlsx-js-style";
 
 const C = {
   bg: "#F7F5F0", card: "#FFFFFF", primary: "#2D5016", accent: "#7AB648",
@@ -157,6 +157,16 @@ export default function App() {
     localStorage.removeItem("kiki_periods");
   };
 
+  // 업로드 데이터 초기화
+  const resetUpload = () => {
+    setClassData({});
+    setUploadErrors([]);
+    setActivityMap({});
+    // 파일 input 초기화
+    const fi = document.getElementById("fileInput");
+    if (fi) fi.value = "";
+  };
+
   // 배분표: alloc[classIdx][actIdx] = 인원 (수동 수정 가능)
   const [alloc, setAlloc] = useState([]);
   const [allocInitialized, setAllocInitialized] = useState(false);
@@ -201,70 +211,128 @@ export default function App() {
   // 서식 다운로드
   // 모든 학급을 시트 하나로 묶어 파일 1개로 다운로드
   const downloadTemplates = () => {
+    const ACT_COLORS = ["2D5016", "4A7C59", "6EA083"];
+    const HEAD_BG    = "2D5016";
+    const GUIDE_BG   = "F0F7E8";
+    const HDR_BG     = "E8F5D8";
+    const NUM_BG     = "F7F5F0";
+
+    const cs = (bold, sz, color, bg, border) => ({
+      font:      { bold: bold || false, sz: sz || 10, color: { rgb: color || "000000" }, name: "맑은 고딕" },
+      fill:      { patternType: "solid", fgColor: { rgb: bg || "FFFFFF" } },
+      alignment: { horizontal: "center", vertical: "center", wrapText: true },
+      border: border ? {
+        top:    { style: "thin", color: { rgb: "AAAAAA" } },
+        bottom: { style: "thin", color: { rgb: "AAAAAA" } },
+        left:   { style: "thin", color: { rgb: "AAAAAA" } },
+        right:  { style: "thin", color: { rgb: "AAAAAA" } },
+      } : {},
+    });
+
     const wb = XLSX.utils.book_new();
 
     classes.forEach((cls, ci) => {
-      const actCount = activities.length;
+      const actCount   = activities.length;
       const colsPerAct = 3;
-      const gapCols = 1;
-      const totalCols = actCount * colsPerAct + (actCount - 1) * gapCols;
-      const maxRows = Math.max(...activities.map((_, ai) => alloc[ci] ? alloc[ci][ai] : 10), 10);
+      const gapCols    = 1;
+      const totalCols  = actCount * colsPerAct + (actCount - 1) * gapCols;
+      const maxRows    = Math.max(...activities.map((_, ai) => alloc[ci] ? alloc[ci][ai] : 10), 10);
+      const merges     = [];
+      const ws         = {};
 
-      const rows = [];
-      const merges = [];
+      let R = 0;
 
-      // 제목 행
-      const titleRow = Array(totalCols).fill("");
-      titleRow[0] = `[${cls.name}] 체험활동 신청 명단`;
-      rows.push(titleRow);
-      merges.push({ s: { r: 0, c: 0 }, e: { r: 0, c: totalCols - 1 } });
+      // ── 행0: 제목
+      for (let c = 0; c < totalCols; c++) {
+        ws[XLSX.utils.encode_cell({ r: R, c })] = {
+          v: c === 0 ? `[${cls.name}] 체험활동 신청 명단` : "",
+          s: cs(true, 14, "FFFFFF", HEAD_BG, false),
+        };
+      }
+      merges.push({ s: { r: R, c: 0 }, e: { r: R, c: totalCols - 1 } });
+      R++;
 
-      // 안내 행
-      const guideRow = Array(totalCols).fill("");
-      guideRow[0] = "※ 본인 학급 시트에만 입력 / 학번·이름을 해당 체험활동 칸에 입력";
-      rows.push(guideRow);
-      merges.push({ s: { r: 1, c: 0 }, e: { r: 1, c: totalCols - 1 } });
+      // ── 행1: 안내문
+      for (let c = 0; c < totalCols; c++) {
+        ws[XLSX.utils.encode_cell({ r: R, c })] = {
+          v: c === 0 ? "※ 본인 학급 시트에만 입력  |  학번·이름을 해당 체험활동 칸에 입력  |  체험활동명 오탈자 주의" : "",
+          s: { ...cs(false, 9, "555555", GUIDE_BG, false), alignment: { horizontal: "left", vertical: "center" } },
+        };
+      }
+      merges.push({ s: { r: R, c: 0 }, e: { r: R, c: totalCols - 1 } });
+      R++;
 
-      // 빈 행
-      rows.push(Array(totalCols).fill(""));
+      // ── 행2: 빈 행
+      for (let c = 0; c < totalCols; c++) {
+        ws[XLSX.utils.encode_cell({ r: R, c })] = { v: "", s: cs(false, 8, "FFFFFF", "FFFFFF", false) };
+      }
+      R++;
 
-      // 체험활동명 헤더
-      const actTitleRow = Array(totalCols).fill("");
+      // ── 행3: 체험활동명 헤더
       activities.forEach((act, ai) => {
-        const n = alloc[ci] ? alloc[ci][ai] : 0;
         const sc = ai * (colsPerAct + gapCols);
-        actTitleRow[sc] = act.name + "  (최대 " + n + "명)";
-        merges.push({ s: { r: 3, c: sc }, e: { r: 3, c: sc + colsPerAct - 1 } });
+        const n  = alloc[ci] ? alloc[ci][ai] : 0;
+        const bg = ACT_COLORS[ai % ACT_COLORS.length];
+        for (let c = sc; c < sc + colsPerAct; c++) {
+          ws[XLSX.utils.encode_cell({ r: R, c })] = {
+            v: c === sc ? `${act.name}  (최대 ${n}명 / 전체 정원 ${act.capacity}명)` : "",
+            s: cs(true, 11, "FFFFFF", bg, false),
+          };
+        }
+        merges.push({ s: { r: R, c: sc }, e: { r: R, c: sc + colsPerAct - 1 } });
+        // 간격 열
+        if (ai < actCount - 1) {
+          ws[XLSX.utils.encode_cell({ r: R, c: sc + colsPerAct })] = { v: "", s: cs(false, 8, "FFFFFF", "FFFFFF", false) };
+        }
       });
-      rows.push(actTitleRow);
+      R++;
 
-      // 컬럼 헤더
-      const headerRow = Array(totalCols).fill("");
+      // ── 행4: 번호|학번|이름 헤더
       activities.forEach((_, ai) => {
         const sc = ai * (colsPerAct + gapCols);
-        headerRow[sc] = "번호";
-        headerRow[sc + 1] = "학번";
-        headerRow[sc + 2] = "이름";
-      });
-      rows.push(headerRow);
-
-      // 입력 행
-      for (let r = 0; r < maxRows; r++) {
-        const dataRow = Array(totalCols).fill("");
-        activities.forEach((_, ai) => {
-          dataRow[ai * (colsPerAct + gapCols)] = r + 1;
+        ["번호", "학번", "이름"].forEach((label, j) => {
+          ws[XLSX.utils.encode_cell({ r: R, c: sc + j })] = {
+            v: label, s: cs(true, 10, "2D5016", HDR_BG, true),
+          };
         });
-        rows.push(dataRow);
+        if (ai < actCount - 1) {
+          ws[XLSX.utils.encode_cell({ r: R, c: sc + colsPerAct })] = { v: "", s: cs(false, 8, "FFFFFF", "FFFFFF", false) };
+        }
+      });
+      R++;
+
+      // ── 행5~: 입력 행
+      for (let r = 0; r < maxRows; r++) {
+        activities.forEach((_, ai) => {
+          const sc = ai * (colsPerAct + gapCols);
+          // 번호
+          ws[XLSX.utils.encode_cell({ r: R, c: sc })] = {
+            v: r + 1, s: { ...cs(false, 10, "888888", NUM_BG, true) },
+          };
+          // 학번, 이름
+          ["", ""].forEach((_, j) => {
+            ws[XLSX.utils.encode_cell({ r: R, c: sc + 1 + j })] = {
+              v: "", s: cs(false, 10, "000000", "FFFFFF", true),
+            };
+          });
+          if (ai < actCount - 1) {
+            ws[XLSX.utils.encode_cell({ r: R, c: sc + colsPerAct })] = { v: "", s: cs(false, 8, "FFFFFF", "FFFFFF", false) };
+          }
+        });
+        R++;
       }
 
-      const ws = XLSX.utils.aoa_to_sheet(rows);
+      // ref, cols, merges
+      ws["!ref"] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: R - 1, c: totalCols - 1 } });
       const colWidths = [];
       activities.forEach((_, ai) => {
-        colWidths.push({ wch: 5 }, { wch: 10 }, { wch: 10 });
+        colWidths.push({ wch: 6 }, { wch: 12 }, { wch: 12 });
         if (ai < actCount - 1) colWidths.push({ wch: 2 });
       });
-      ws["!cols"] = colWidths;
+      ws["!cols"]   = colWidths;
       ws["!merges"] = merges;
+      ws["!freeze"] = { xSplit: 0, ySplit: 5 };
+
       XLSX.utils.book_append_sheet(wb, ws, cls.name.slice(0, 31));
     });
 
@@ -410,21 +478,75 @@ export default function App() {
   };
 
   const downloadAttendance = () => {
+    const HEAD_BG  = "2D5016";
+    const HDR_BG   = "E8F5D8";
+    const NUM_BG   = "F7F5F0";
+    const EVEN_BG  = "F7F5F0";
+    const ACT_COLORS = ["2D5016", "4A7C59", "6EA083"];
+
+    const cs = (bold, sz, color, bg, border) => ({
+      font:      { bold: bold || false, sz: sz || 10, color: { rgb: color || "000000" }, name: "맑은 고딕" },
+      fill:      { patternType: "solid", fgColor: { rgb: bg || "FFFFFF" } },
+      alignment: { horizontal: "center", vertical: "center" },
+      border: border ? {
+        top:    { style: "thin", color: { rgb: "AAAAAA" } },
+        bottom: { style: "thin", color: { rgb: "AAAAAA" } },
+        left:   { style: "thin", color: { rgb: "AAAAAA" } },
+        right:  { style: "thin", color: { rgb: "AAAAAA" } },
+      } : {},
+    });
+
     const wb = XLSX.utils.book_new();
     const periodLabels = selectedPeriods.map(p => `${p}교시`);
-    activities.forEach(act => {
-      const stus = activityMap[act.name] || [];
-      const rows = [
-        [`${act.name} 출석부 (정원 ${act.capacity}명)`],
-        ["번호", "학급", "학번", "이름", ...periodLabels, "비고"],
-        ...stus.map((stu, idx) => [idx + 1, stu.class, stu.id, stu.name, ...Array(periodLabels.length).fill(""), ""]),
-      ];
-      const ws = XLSX.utils.aoa_to_sheet(rows);
-      const totalCols = 4 + periodLabels.length + 1;
+    const headers = ["번호", "학급", "학번", "이름", ...periodLabels, "비고"];
+    const totalCols = headers.length;
+
+    activities.forEach((act, actIdx) => {
+      const stus  = activityMap[act.name] || [];
+      const ws    = {};
+      const actBg = ACT_COLORS[actIdx % ACT_COLORS.length];
+      let R = 0;
+
+      // ── 행0: 제목
+      for (let c = 0; c < totalCols; c++) {
+        ws[XLSX.utils.encode_cell({ r: R, c })] = {
+          v: c === 0 ? `${act.name} 출석부  (정원 ${act.capacity}명 / 신청 ${stus.length}명)` : "",
+          s: cs(true, 13, "FFFFFF", actBg, false),
+        };
+      }
+      ws["!merges"] = [{ s: { r: R, c: 0 }, e: { r: R, c: totalCols - 1 } }];
+      R++;
+
+      // ── 행1: 헤더
+      headers.forEach((h, c) => {
+        ws[XLSX.utils.encode_cell({ r: R, c })] = {
+          v: h, s: cs(true, 10, "2D5016", HDR_BG, true),
+        };
+      });
+      R++;
+
+      // ── 행2~: 학생 데이터
+      stus.forEach((stu, idx) => {
+        const rowBg = idx % 2 === 0 ? EVEN_BG : "FFFFFF";
+        [idx + 1, stu.class, stu.id, stu.name, ...Array(periodLabels.length).fill(""), ""].forEach((v, c) => {
+          ws[XLSX.utils.encode_cell({ r: R, c })] = {
+            v,
+            s: {
+              ...cs(false, 10, "000000", c === 0 ? NUM_BG : rowBg, true),
+              alignment: { horizontal: c === 3 || c === totalCols - 1 ? "left" : "center", vertical: "center" },
+            },
+          };
+        });
+        R++;
+      });
+
+      ws["!ref"]  = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: R - 1, c: totalCols - 1 } });
       ws["!cols"] = [{ wch: 5 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, ...Array(periodLabels.length).fill({ wch: 8 }), { wch: 14 }];
-      ws["!merges"] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: totalCols - 1 } }];
+      ws["!freeze"] = { xSplit: 0, ySplit: 2 };
+
       XLSX.utils.book_append_sheet(wb, ws, act.name.slice(0, 31));
     });
+
     XLSX.writeFile(wb, "체험활동_출석부.xlsx");
   };
 
@@ -750,7 +872,13 @@ export default function App() {
 
             {uploadedClasses.length > 0 && (
               <>
-                <div style={{ fontSize: 12, color: C.muted, marginBottom: 6 }}>업로드 현황 ({uploadedClasses.length}/{classes.length})</div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                  <div style={{ fontSize: 12, color: C.muted }}>업로드 현황 ({uploadedClasses.length}/{classes.length})</div>
+                  <button onClick={resetUpload} style={{
+                    padding: "4px 12px", borderRadius: 8, border: `1px solid ${C.border}`,
+                    background: C.bg, color: C.muted, fontSize: 12, cursor: "pointer", fontFamily: "inherit",
+                  }}>🗑️ 초기화</button>
+                </div>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 7, marginBottom: 10 }}>
                   {classes.map(cls => {
                     const ok = uploadedClasses.includes(cls.name);

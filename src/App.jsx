@@ -301,19 +301,20 @@ export default function App() {
       });
       R++;
 
-      // ── 행5~: 입력 행
+      // ── 행5~: 입력 행 (활동별 배정 인원만큼만)
       for (let r = 0; r < maxRows; r++) {
         activities.forEach((_, ai) => {
-          const sc = ai * (colsPerAct + gapCols);
+          const sc     = ai * (colsPerAct + gapCols);
+          const hasRow = r < actRows[ai];
           // 번호
-          ws[XLSX.utils.encode_cell({ r: R, c: sc })] = {
-            v: r + 1, s: { ...cs(false, 10, "888888", NUM_BG, true) },
-          };
+          ws[XLSX.utils.encode_cell({ r: R, c: sc })] = hasRow
+            ? { v: r + 1, s: { ...cs(false, 10, "888888", NUM_BG, true) } }
+            : { v: "", s: cs(false, 10, "CCCCCC", "EEEEEE", false) };
           // 학번, 이름
-          ["", ""].forEach((_, j) => {
-            ws[XLSX.utils.encode_cell({ r: R, c: sc + 1 + j })] = {
-              v: "", s: cs(false, 10, "000000", "FFFFFF", true),
-            };
+          [1, 2].forEach(j => {
+            ws[XLSX.utils.encode_cell({ r: R, c: sc + j })] = hasRow
+              ? { v: "", s: cs(false, 10, "000000", "FFFFFF", true) }
+              : { v: "", s: cs(false, 10, "CCCCCC", "EEEEEE", false) };
           });
           if (ai < actCount - 1) {
             ws[XLSX.utils.encode_cell({ r: R, c: sc + colsPerAct })] = { v: "", s: cs(false, 8, "FFFFFF", "FFFFFF", false) };

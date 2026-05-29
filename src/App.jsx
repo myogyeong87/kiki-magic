@@ -236,7 +236,8 @@ export default function App() {
       const colsPerAct = 3;
       const gapCols    = 1;
       const totalCols  = actCount * colsPerAct + (actCount - 1) * gapCols;
-      const maxRows    = Math.max(...activities.map((_, ai) => alloc[ci] ? alloc[ci][ai] : 10), 10);
+      const actRows    = activities.map((_, ai) => alloc[ci] ? alloc[ci][ai] : 0);
+      const maxRows    = Math.max(...actRows, 1);
       const merges     = [];
       const ws         = {};
 

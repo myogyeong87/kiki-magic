@@ -640,7 +640,7 @@ export default function App() {
                 {classes.map((cls, i) => (
                   <div key={i} style={{ display: "flex", gap: 8, alignItems: "center" }}>
                     <input value={cls.name} onChange={e => setClasses(p => p.map((c,j) => j===i ? {...c, name: e.target.value} : c))}
-                      style={{ ...inp, flex: 2 }} placeholder="학급명" />
+                      style={{ ...inp, flex: 2, minWidth: 0 }} placeholder="학급명" />
                     <input type="number" value={cls.size} min={1} onChange={e => setClasses(p => p.map((c,j) => j===i ? {...c, size: Number(e.target.value)||0} : c))}
                       style={{ ...inp, width: 70, textAlign: "center" }} />
                     <span style={{ fontSize: 12, color: C.muted }}>명</span>

@@ -687,7 +687,7 @@ export default function App() {
                   <input type="number" value={newAct.capacity} min={0} onChange={e=>setNewAct(p=>({...p,capacity:Number(e.target.value)||0}))}
                     style={{ ...inp, flex: 1, textAlign: "center" }} />
                   <span style={{ fontSize: 12, color: C.muted }}>명</span>
-                  <Btn variant="accent" onClick={()=>{const v=newAct.name.trim();if(v){setActivities(p=>[...p,{id:Date.now(),name:v,capacity:newAct.capacity}]);setNewAct({name:"",capacity:30});}}}} style={{ flex: 1 }}>+ 추가</Btn>
+                  <Btn variant="accent" onClick={()=>{const v=newAct.name.trim();if(v){setActivities(p=>[...p,{id:Date.now(),name:v,capacity:newAct.capacity}]);setNewAct({name:"",capacity:30});}}} style={{ flex: 1 }}>+ 추가</Btn>
                 </div>
               </div>
             </div>

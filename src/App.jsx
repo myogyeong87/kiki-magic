@@ -575,12 +575,12 @@ export default function App() {
         <div style={{ maxWidth: 860, margin: "0 auto", width: "100%" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
             <div>
-              <div style={{ fontSize: 11, letterSpacing: 2, opacity: .7, marginBottom: 4 }}>진로체험 분반 출석부 자동 생성기</div>
+              <div style={{ fontSize: 10, letterSpacing: 1, opacity: .7, marginBottom: 4 }}>진로체험 분반 출석부 자동 생성기</div>
               <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800 }}>출석부 생성 마법사 🧙‍♀️</h1>
             </div>
             <button onClick={() => setShowGuide(true)} style={{
-              padding: "7px 14px", borderRadius: 20, border: "1.5px solid rgba(255,255,255,0.5)",
-              background: "transparent", color: "#fff", fontSize: 13, fontWeight: 600,
+              padding: "5px 10px", borderRadius: 20, border: "1.5px solid rgba(255,255,255,0.5)",
+              background: "transparent", color: "#fff", fontSize: 11, fontWeight: 600,
               cursor: "pointer", fontFamily: "inherit", marginTop: 4, whiteSpace: "nowrap",
             }}>📖 사용 안내</button>
           </div>
@@ -589,14 +589,16 @@ export default function App() {
 
       <div style={{ maxWidth: 860, margin: "0 auto", padding: "22px clamp(16px, 5vw, 40px) 0", boxSizing: "border-box" }}>
         {/* 스텝 바 */}
-        <div style={{ display: "flex", alignItems: "center", marginBottom: 22 }}>
+        <div style={{ display: "flex", alignItems: "center", marginBottom: 16 }}>
           {STEPS.map(({ n, label }, i) => (
             <div key={n} style={{ display: "flex", alignItems: "center", flex: i < STEPS.length - 1 ? 1 : "none" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 7, cursor: step > n ? "pointer" : "default" }} onClick={() => step > n && setStep(n)}>
+              <div style={{ display: "flex", alignItems: "center", gap: 5, cursor: step > n ? "pointer" : "default" }} onClick={() => step > n && setStep(n)}>
                 <StepBadge n={n} active={step === n} done={step > n} />
-                <span style={{ fontSize: 11, fontWeight: step === n ? 700 : 400, color: step === n ? C.primary : step > n ? C.accent : C.muted, whiteSpace: "nowrap" }}>{label}</span>
+                {step === n && (
+                  <span style={{ fontSize: 11, fontWeight: 700, color: C.primary, whiteSpace: "nowrap" }}>{label}</span>
+                )}
               </div>
-              {i < STEPS.length - 1 && <div style={{ flex: 1, height: 2, margin: "0 8px", background: step > n ? C.accent : C.border }} />}
+              {i < STEPS.length - 1 && <div style={{ flex: 1, height: 2, margin: "0 6px", background: step > n ? C.accent : C.border }} />}
             </div>
           ))}
         </div>
@@ -651,7 +653,7 @@ export default function App() {
                 <input value={newCls.name} onChange={e => setNewCls(p=>({...p,name:e.target.value}))}
                   onKeyDown={e => { if(e.key==="Enter"){ const v=newCls.name.trim(); if(v){setClasses(p=>[...p,{name:v,size:newCls.size}]);setNewCls({name:"",size:30});}}}}
                   placeholder="학급 이름 입력 후 Enter"
-                  style={{ ...inp, flex: 2, border: `1.5px dashed ${C.accent}`, background: C.accent2 }} />
+                  style={{ ...inp, flex: 1, minWidth: 0, border: `1.5px dashed ${C.accent}`, background: C.accent2 }} />
                 <input type="number" value={newCls.size} min={1} onChange={e => setNewCls(p=>({...p,size:Number(e.target.value)||30}))}
                   style={{ ...inp, width: 70, textAlign: "center" }} />
                 <span style={{ fontSize: 12, color: C.muted }}>명</span>
@@ -667,7 +669,7 @@ export default function App() {
                   <div key={act.id} style={{ display: "flex", gap: 8, alignItems: "center" }}>
                     <div style={{ width: 6, height: 6, borderRadius: "50%", background: C.accent, flexShrink: 0 }} />
                     <input value={act.name} onChange={e => setActivities(p=>p.map(a=>a.id===act.id?{...a,name:e.target.value}:a))}
-                      style={{ ...inp, flex: 2 }} />
+                      style={{ ...inp, flex: 1, minWidth: 0 }} />
                     <input type="number" value={act.capacity} min={0} onChange={e => setActivities(p=>p.map(a=>a.id===act.id?{...a,capacity:Number(e.target.value)||0}:a))}
                       style={{ ...inp, width: 70, textAlign: "center" }} />
                     <span style={{ fontSize: 12, color: C.muted }}>명</span>
@@ -676,16 +678,17 @@ export default function App() {
                   </div>
                 ))}
               </div>
-              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                <div style={{ width: 6, height: 6, borderRadius: "50%", background: C.border, flexShrink: 0 }} />
+              <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
                 <input value={newAct.name} onChange={e=>setNewAct(p=>({...p,name:e.target.value}))}
                   onKeyDown={e=>{if(e.key==="Enter"){const v=newAct.name.trim();if(v){setActivities(p=>[...p,{id:Date.now(),name:v,capacity:newAct.capacity}]);setNewAct({name:"",capacity:30});}}}}
                   placeholder="새 체험활동 이름"
-                  style={{ ...inp, flex: 2, border: `1.5px dashed ${C.accent}`, background: C.accent2 }} />
-                <input type="number" value={newAct.capacity} min={0} onChange={e=>setNewAct(p=>({...p,capacity:Number(e.target.value)||0}))}
-                  style={{ ...inp, width: 70, textAlign: "center" }} />
-                <span style={{ fontSize: 12, color: C.muted }}>명</span>
-                <Btn variant="accent" onClick={()=>{const v=newAct.name.trim();if(v){setActivities(p=>[...p,{id:Date.now(),name:v,capacity:newAct.capacity}]);setNewAct({name:"",capacity:30});}}}>+ 추가</Btn>
+                  style={{ ...inp, width: "100%", border: `1.5px dashed ${C.accent}`, background: C.accent2 }} />
+                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <input type="number" value={newAct.capacity} min={0} onChange={e=>setNewAct(p=>({...p,capacity:Number(e.target.value)||0}))}
+                    style={{ ...inp, flex: 1, textAlign: "center" }} />
+                  <span style={{ fontSize: 12, color: C.muted }}>명</span>
+                  <Btn variant="accent" onClick={()=>{const v=newAct.name.trim();if(v){setActivities(p=>[...p,{id:Date.now(),name:v,capacity:newAct.capacity}]);setNewAct({name:"",capacity:30});}}}} style={{ flex: 1 }}>+ 추가</Btn>
+                </div>
               </div>
             </div>
           </Card>
@@ -1062,9 +1065,9 @@ export default function App() {
                   <span style={{ background: color, color: "#fff", borderRadius: 20, padding: "2px 10px", fontSize: 11, fontWeight: 700 }}>{step}</span>
                   <span style={{ fontSize: 14, fontWeight: 700, color: C.primary }}>{title}</span>
                 </div>
-                <ul style={{ margin: 0, paddingLeft: 18 }}>
+                <ul style={{ margin: 0, paddingLeft: 18, textAlign: "left" }}>
                   {items.map((item, i) => (
-                    <li key={i} style={{ fontSize: 13, color: C.text, lineHeight: 1.8 }}>{item}</li>
+                    <li key={i} style={{ fontSize: 12, color: C.text, lineHeight: 1.8, textAlign: "left" }}>{item}</li>
                   ))}
                 </ul>
               </div>

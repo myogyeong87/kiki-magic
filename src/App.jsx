@@ -130,7 +130,12 @@ export default function App() {
   useEffect(() => { localStorage.setItem("kiki_activities", JSON.stringify(activities)); }, [activities]);
   useEffect(() => { localStorage.setItem("kiki_periods", JSON.stringify(selectedPeriods)); }, [selectedPeriods]);
   useEffect(() => {
-    if (alloc.length > 0) localStorage.setItem("kiki_alloc", JSON.stringify(alloc));
+    if (alloc.length > 0) {
+      localStorage.setItem("kiki_alloc", JSON.stringify(alloc));
+      setAllocSaved(true);
+      const t = setTimeout(() => setAllocSaved(false), 2000);
+      return () => clearTimeout(t);
+    }
   }, [alloc]);
 
   // 설정 초기화
@@ -148,6 +153,9 @@ export default function App() {
     localStorage.removeItem("kiki_periods");
     localStorage.removeItem("kiki_alloc");
   };
+
+  // 배분표 저장됨 표시
+  const [allocSaved, setAllocSaved] = useState(false);
 
   // 프리셋 관리 (최대 4개)
   const [presets, setPresets] = useState(() => loadSaved("kiki_presets", []));
@@ -723,7 +731,7 @@ export default function App() {
             </div>
           )}
 
-          <Btn onClick={() => { computeAlloc(); setStep(2); }}
+          <Btn onClick={() => { if (alloc.length === 0) computeAlloc(); setStep(2); }}
             disabled={classes.length === 0 || activities.length === 0 || selectedPeriods.length === 0 || totalCap < totalStudents}
             style={{ width: "100%" }}>
             다음: 배분표 확인 & 서식 다운로드 →
@@ -736,7 +744,7 @@ export default function App() {
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
               <h2 style={{ margin: 0, fontSize: 15, color: C.primary }}>📊 학급별 체험활동 배분표</h2>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <span style={{ fontSize: 11, color: C.accent, fontWeight: 600 }}>✅ 자동 저장됨</span>
+                {allocSaved && <span style={{ fontSize: 11, color: C.accent, fontWeight: 600 }}>✅ 저장됨</span>}
                 <Btn variant="ghost" onClick={computeAlloc} style={{ fontSize: 12, padding: "6px 14px" }}>🔄 자동 재계산</Btn>
               </div>
             </div>

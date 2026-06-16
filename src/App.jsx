@@ -216,11 +216,12 @@ export default function App() {
     const GUIDE_BG   = "F0F7E8";
     const HDR_BG     = "E8F5D8";
     const NUM_BG     = "F7F5F0";
+    const TOTAL_COLS = 3; // 번호 | 학번 | 이름 (A4 가로에 맞게 3열 고정)
 
-    const cs = (bold, sz, color, bg, border) => ({
+    const cs = (bold, sz, color, bg, border, align) => ({
       font:      { bold: bold || false, sz: sz || 10, color: { rgb: color || "000000" }, name: "맑은 고딕" },
       fill:      { patternType: "solid", fgColor: { rgb: bg || "FFFFFF" } },
-      alignment: { horizontal: "center", vertical: "center", wrapText: true },
+      alignment: { horizontal: align || "center", vertical: "center", wrapText: true },
       border: border ? {
         top:    { style: "thin", color: { rgb: "AAAAAA" } },
         bottom: { style: "thin", color: { rgb: "AAAAAA" } },
@@ -232,108 +233,75 @@ export default function App() {
     const wb = XLSX.utils.book_new();
 
     classes.forEach((cls, ci) => {
-      const actCount   = activities.length;
-      const colsPerAct = 3;
-      const gapCols    = 1;
-      const totalCols  = actCount * colsPerAct + (actCount - 1) * gapCols;
-      const actRows    = activities.map((_, ai) => alloc[ci] ? alloc[ci][ai] : 0);
-      const maxRows    = Math.max(...actRows, 1);
-      const merges     = [];
-      const ws         = {};
-
+      const merges = [];
+      const ws     = {};
       let R = 0;
 
-      // ── 행0: 제목
-      for (let c = 0; c < totalCols; c++) {
+      // ── 제목
+      for (let c = 0; c < TOTAL_COLS; c++) {
         ws[XLSX.utils.encode_cell({ r: R, c })] = {
           v: c === 0 ? `[${cls.name}] 체험활동 신청 명단` : "",
-          s: cs(true, 14, "FFFFFF", HEAD_BG, false),
+          s: cs(true, 14, "FFFFFF", HEAD_BG, false, "center"),
         };
       }
-      merges.push({ s: { r: R, c: 0 }, e: { r: R, c: totalCols - 1 } });
+      merges.push({ s: { r: R, c: 0 }, e: { r: R, c: TOTAL_COLS - 1 } });
       R++;
 
-      // ── 행1: 안내문
-      for (let c = 0; c < totalCols; c++) {
+      // ── 안내문
+      for (let c = 0; c < TOTAL_COLS; c++) {
         ws[XLSX.utils.encode_cell({ r: R, c })] = {
-          v: c === 0 ? "※ 본인 학급 시트에만 입력  |  학번·이름을 해당 체험활동 칸에 입력  |  체험활동명 오탈자 주의" : "",
-          s: { ...cs(false, 9, "555555", GUIDE_BG, false), alignment: { horizontal: "left", vertical: "center" } },
+          v: c === 0 ? "※ 본인 학급 시트에만 입력  |  체험활동명 오탈자 주의" : "",
+          s: cs(false, 9, "555555", GUIDE_BG, false, "left"),
         };
       }
-      merges.push({ s: { r: R, c: 0 }, e: { r: R, c: totalCols - 1 } });
+      merges.push({ s: { r: R, c: 0 }, e: { r: R, c: TOTAL_COLS - 1 } });
       R++;
 
-      // ── 행2: 빈 행
-      for (let c = 0; c < totalCols; c++) {
-        ws[XLSX.utils.encode_cell({ r: R, c })] = { v: "", s: cs(false, 8, "FFFFFF", "FFFFFF", false) };
-      }
-      R++;
-
-      // ── 행3: 체험활동명 헤더
+      // ── 체험활동별 세로 배치
       activities.forEach((act, ai) => {
-        const sc = ai * (colsPerAct + gapCols);
         const n  = alloc[ci] ? alloc[ci][ai] : 0;
         const bg = ACT_COLORS[ai % ACT_COLORS.length];
-        for (let c = sc; c < sc + colsPerAct; c++) {
+
+        // 빈 행 (구분)
+        for (let c = 0; c < TOTAL_COLS; c++) {
+          ws[XLSX.utils.encode_cell({ r: R, c })] = { v: "", s: cs(false, 6, "FFFFFF", "FFFFFF", false) };
+        }
+        R++;
+
+        // 체험활동명 헤더
+        for (let c = 0; c < TOTAL_COLS; c++) {
           ws[XLSX.utils.encode_cell({ r: R, c })] = {
-            v: c === sc ? `${act.name}  (최대 ${n}명 / 전체 정원 ${act.capacity}명)` : "",
-            s: cs(true, 11, "FFFFFF", bg, false),
+            v: c === 0 ? `${act.name}  (배정 ${n}명 / 전체 정원 ${act.capacity}명)` : "",
+            s: cs(true, 12, "FFFFFF", bg, false, "center"),
           };
         }
-        merges.push({ s: { r: R, c: sc }, e: { r: R, c: sc + colsPerAct - 1 } });
-        // 간격 열
-        if (ai < actCount - 1) {
-          ws[XLSX.utils.encode_cell({ r: R, c: sc + colsPerAct })] = { v: "", s: cs(false, 8, "FFFFFF", "FFFFFF", false) };
-        }
-      });
-      R++;
+        merges.push({ s: { r: R, c: 0 }, e: { r: R, c: TOTAL_COLS - 1 } });
+        R++;
 
-      // ── 행4: 번호|학번|이름 헤더
-      activities.forEach((_, ai) => {
-        const sc = ai * (colsPerAct + gapCols);
+        // 컬럼 헤더
         ["번호", "학번", "이름"].forEach((label, j) => {
-          ws[XLSX.utils.encode_cell({ r: R, c: sc + j })] = {
-            v: label, s: cs(true, 10, "2D5016", HDR_BG, true),
+          ws[XLSX.utils.encode_cell({ r: R, c: j })] = {
+            v: label, s: cs(true, 10, "2D5016", HDR_BG, true, "center"),
           };
-        });
-        if (ai < actCount - 1) {
-          ws[XLSX.utils.encode_cell({ r: R, c: sc + colsPerAct })] = { v: "", s: cs(false, 8, "FFFFFF", "FFFFFF", false) };
-        }
-      });
-      R++;
-
-      // ── 행5~: 입력 행 (활동별 배정 인원만큼만)
-      for (let r = 0; r < maxRows; r++) {
-        activities.forEach((_, ai) => {
-          const sc     = ai * (colsPerAct + gapCols);
-          const hasRow = r < actRows[ai];
-          // 번호
-          ws[XLSX.utils.encode_cell({ r: R, c: sc })] = hasRow
-            ? { v: r + 1, s: { ...cs(false, 10, "888888", NUM_BG, true) } }
-            : { v: "", s: cs(false, 10, "CCCCCC", "EEEEEE", false) };
-          // 학번, 이름
-          [1, 2].forEach(j => {
-            ws[XLSX.utils.encode_cell({ r: R, c: sc + j })] = hasRow
-              ? { v: "", s: cs(false, 10, "000000", "FFFFFF", true) }
-              : { v: "", s: cs(false, 10, "CCCCCC", "EEEEEE", false) };
-          });
-          if (ai < actCount - 1) {
-            ws[XLSX.utils.encode_cell({ r: R, c: sc + colsPerAct })] = { v: "", s: cs(false, 8, "FFFFFF", "FFFFFF", false) };
-          }
         });
         R++;
-      }
 
-      // ref, cols, merges
-      ws["!ref"] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: R - 1, c: totalCols - 1 } });
-      const colWidths = [];
-      activities.forEach((_, ai) => {
-        colWidths.push({ wch: 6 }, { wch: 12 }, { wch: 12 });
-        if (ai < actCount - 1) colWidths.push({ wch: 2 });
+        // 입력 행
+        for (let r = 0; r < n; r++) {
+          ws[XLSX.utils.encode_cell({ r: R, c: 0 })] = {
+            v: r + 1, s: cs(false, 10, "888888", NUM_BG, true, "center"),
+          };
+          ws[XLSX.utils.encode_cell({ r: R, c: 1 })] = { v: "", s: cs(false, 10, "000000", "FFFFFF", true, "center") };
+          ws[XLSX.utils.encode_cell({ r: R, c: 2 })] = { v: "", s: cs(false, 10, "000000", "FFFFFF", true, "left") };
+          R++;
+        }
       });
-      ws["!cols"]   = colWidths;
+
+      ws["!ref"]    = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: R - 1, c: TOTAL_COLS - 1 } });
+      ws["!cols"]   = [{ wch: 6 }, { wch: 14 }, { wch: 14 }];
       ws["!merges"] = merges;
-      ws["!freeze"] = { xSplit: 0, ySplit: 5 };
+      // A4 세로 인쇄 설정
+      ws["!pageSetup"] = { paperSize: 9, orientation: "portrait", fitToPage: true, fitToWidth: 1, fitToHeight: 0 };
 
       XLSX.utils.book_append_sheet(wb, ws, cls.name.slice(0, 31));
     });
@@ -640,7 +608,7 @@ export default function App() {
                 {classes.map((cls, i) => (
                   <div key={i} style={{ display: "flex", gap: 8, alignItems: "center" }}>
                     <input value={cls.name} onChange={e => setClasses(p => p.map((c,j) => j===i ? {...c, name: e.target.value} : c))}
-                      style={{ ...inp, flex: 2, minWidth: 0 }} placeholder="학급명" />
+                      style={{ ...inp, flex: 2 }} placeholder="학급명" />
                     <input type="number" value={cls.size} min={1} onChange={e => setClasses(p => p.map((c,j) => j===i ? {...c, size: Number(e.target.value)||0} : c))}
                       style={{ ...inp, width: 70, textAlign: "center" }} />
                     <span style={{ fontSize: 12, color: C.muted }}>명</span>
@@ -687,7 +655,7 @@ export default function App() {
                   <input type="number" value={newAct.capacity} min={0} onChange={e=>setNewAct(p=>({...p,capacity:Number(e.target.value)||0}))}
                     style={{ ...inp, flex: 1, textAlign: "center" }} />
                   <span style={{ fontSize: 12, color: C.muted }}>명</span>
-                  <Btn variant="accent" onClick={()=>{const v=newAct.name.trim();if(v){setActivities(p=>[...p,{id:Date.now(),name:v,capacity:newAct.capacity}]);setNewAct({name:"",capacity:30});}}} style={{ flex: 1 }}>+ 추가</Btn>
+                  <Btn variant="accent" onClick={()=>{const v=newAct.name.trim();if(v){setActivities(p=>[...p,{id:Date.now(),name:v,capacity:newAct.capacity}]);setNewAct({name:"",capacity:30});}}}} style={{ flex: 1 }}>+ 추가</Btn>
                 </div>
               </div>
             </div>

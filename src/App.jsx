@@ -121,6 +121,10 @@ export default function App() {
 
   const [selectedPeriods, setSelectedPeriods] = useState(() => loadSaved("kiki_periods", []));
 
+  // 배분표: alloc[classIdx][actIdx] = 인원 (수동 수정 가능)
+  const [alloc, setAlloc] = useState(() => loadSaved("kiki_alloc", []));
+  const [allocInitialized, setAllocInitialized] = useState(false);
+
   // 설정 변경 시 자동 저장
   useEffect(() => { localStorage.setItem("kiki_classes", JSON.stringify(classes)); }, [classes]);
   useEffect(() => { localStorage.setItem("kiki_activities", JSON.stringify(activities)); }, [activities]);
@@ -150,14 +154,9 @@ export default function App() {
     setClassData({});
     setUploadErrors([]);
     setActivityMap({});
-    // 파일 input 초기화
     const fi = document.getElementById("fileInput");
     if (fi) fi.value = "";
   };
-
-  // 배분표: alloc[classIdx][actIdx] = 인원 (수동 수정 가능)
-  const [alloc, setAlloc] = useState(() => loadSaved("kiki_alloc", []));
-  const [allocInitialized, setAllocInitialized] = useState(false);
 
   // 업로드
   const [classData, setClassData] = useState({});

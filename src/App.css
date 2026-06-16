@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from "react";
-import * as XLSX from "xlsx";
+import * as XLSX from "xlsx-js-style";
 
 const C = {
   bg: "#F7F5F0", card: "#FFFFFF", primary: "#2D5016", accent: "#7AB648",
@@ -117,24 +117,55 @@ const ALL_PERIODS = [1, 2, 3, 4, 5, 6, 7];
 
 export default function App() {
   const [step, setStep] = useState(1);
+  const [showGuide, setShowGuide] = useState(false);
+
+  // localStorage에서 저장된 설정 불러오기
+  function loadSaved(key, fallback) {
+    try {
+      const v = localStorage.getItem(key);
+      return v ? JSON.parse(v) : fallback;
+    } catch { return fallback; }
+  }
 
   // 학급: {name, size}
-  const [classes, setClasses] = useState([
-    { name: "1학년1반", size: 28 },
-    { name: "1학년2반", size: 30 },
-    { name: "1학년3반", size: 27 },
-  ]);
+  const [classes, setClasses] = useState(() => loadSaved("kiki_classes", []));
   const [newCls, setNewCls] = useState({ name: "", size: 30 });
 
   // 체험활동: {id, name, capacity}
-  const [activities, setActivities] = useState([
-    { id: 1, name: "도예 체험", capacity: 30 },
-    { id: 2, name: "천연 염색", capacity: 25 },
-    { id: 3, name: "전통 요리", capacity: 30 },
-  ]);
+  const [activities, setActivities] = useState(() => loadSaved("kiki_activities", []));
   const [newAct, setNewAct] = useState({ name: "", capacity: 30 });
 
-  const [selectedPeriods, setSelectedPeriods] = useState([3, 4]);
+  const [selectedPeriods, setSelectedPeriods] = useState(() => loadSaved("kiki_periods", []));
+
+  // 설정 변경 시 자동 저장
+  useEffect(() => { localStorage.setItem("kiki_classes", JSON.stringify(classes)); }, [classes]);
+  useEffect(() => { localStorage.setItem("kiki_activities", JSON.stringify(activities)); }, [activities]);
+  useEffect(() => { localStorage.setItem("kiki_periods", JSON.stringify(selectedPeriods)); }, [selectedPeriods]);
+
+  // 설정 초기화
+  const resetSettings = () => {
+    if (!window.confirm("설정을 초기화할까요? 학급, 체험활동, 교시가 모두 기본값으로 돌아가요.")) return;
+    const defaultClasses = [];
+    const defaultActivities = [];
+    const defaultPeriods = [];
+    setClasses(defaultClasses);
+    setActivities(defaultActivities);
+    setSelectedPeriods(defaultPeriods);
+    setStep(1);
+    localStorage.removeItem("kiki_classes");
+    localStorage.removeItem("kiki_activities");
+    localStorage.removeItem("kiki_periods");
+  };
+
+  // 업로드 데이터 초기화
+  const resetUpload = () => {
+    setClassData({});
+    setUploadErrors([]);
+    setActivityMap({});
+    // 파일 input 초기화
+    const fi = document.getElementById("fileInput");
+    if (fi) fi.value = "";
+  };
 
   // 배분표: alloc[classIdx][actIdx] = 인원 (수동 수정 가능)
   const [alloc, setAlloc] = useState([]);
@@ -180,70 +211,98 @@ export default function App() {
   // 서식 다운로드
   // 모든 학급을 시트 하나로 묶어 파일 1개로 다운로드
   const downloadTemplates = () => {
+    const ACT_COLORS = ["2D5016", "4A7C59", "6EA083"];
+    const HEAD_BG    = "2D5016";
+    const GUIDE_BG   = "F0F7E8";
+    const HDR_BG     = "E8F5D8";
+    const NUM_BG     = "F7F5F0";
+    const TOTAL_COLS = 3; // 번호 | 학번 | 이름 (A4 가로에 맞게 3열 고정)
+
+    const cs = (bold, sz, color, bg, border, align) => ({
+      font:      { bold: bold || false, sz: sz || 10, color: { rgb: color || "000000" }, name: "맑은 고딕" },
+      fill:      { patternType: "solid", fgColor: { rgb: bg || "FFFFFF" } },
+      alignment: { horizontal: align || "center", vertical: "center", wrapText: true },
+      border: border ? {
+        top:    { style: "thin", color: { rgb: "AAAAAA" } },
+        bottom: { style: "thin", color: { rgb: "AAAAAA" } },
+        left:   { style: "thin", color: { rgb: "AAAAAA" } },
+        right:  { style: "thin", color: { rgb: "AAAAAA" } },
+      } : {},
+    });
+
     const wb = XLSX.utils.book_new();
 
     classes.forEach((cls, ci) => {
-      const actCount = activities.length;
-      const colsPerAct = 3;
-      const gapCols = 1;
-      const totalCols = actCount * colsPerAct + (actCount - 1) * gapCols;
-      const maxRows = Math.max(...activities.map((_, ai) => alloc[ci] ? alloc[ci][ai] : 10), 10);
-
-      const rows = [];
       const merges = [];
+      const ws     = {};
+      let R = 0;
 
-      // 제목 행
-      const titleRow = Array(totalCols).fill("");
-      titleRow[0] = `[${cls.name}] 체험활동 신청 명단`;
-      rows.push(titleRow);
-      merges.push({ s: { r: 0, c: 0 }, e: { r: 0, c: totalCols - 1 } });
-
-      // 안내 행
-      const guideRow = Array(totalCols).fill("");
-      guideRow[0] = "※ 본인 학급 시트에만 입력 / 학번·이름을 해당 체험활동 칸에 입력";
-      rows.push(guideRow);
-      merges.push({ s: { r: 1, c: 0 }, e: { r: 1, c: totalCols - 1 } });
-
-      // 빈 행
-      rows.push(Array(totalCols).fill(""));
-
-      // 체험활동명 헤더
-      const actTitleRow = Array(totalCols).fill("");
-      activities.forEach((act, ai) => {
-        const n = alloc[ci] ? alloc[ci][ai] : 0;
-        const sc = ai * (colsPerAct + gapCols);
-        actTitleRow[sc] = act.name + "  (최대 " + n + "명)";
-        merges.push({ s: { r: 3, c: sc }, e: { r: 3, c: sc + colsPerAct - 1 } });
-      });
-      rows.push(actTitleRow);
-
-      // 컬럼 헤더
-      const headerRow = Array(totalCols).fill("");
-      activities.forEach((_, ai) => {
-        const sc = ai * (colsPerAct + gapCols);
-        headerRow[sc] = "번호";
-        headerRow[sc + 1] = "학번";
-        headerRow[sc + 2] = "이름";
-      });
-      rows.push(headerRow);
-
-      // 입력 행
-      for (let r = 0; r < maxRows; r++) {
-        const dataRow = Array(totalCols).fill("");
-        activities.forEach((_, ai) => {
-          dataRow[ai * (colsPerAct + gapCols)] = r + 1;
-        });
-        rows.push(dataRow);
+      // ── 제목
+      for (let c = 0; c < TOTAL_COLS; c++) {
+        ws[XLSX.utils.encode_cell({ r: R, c })] = {
+          v: c === 0 ? `[${cls.name}] 체험활동 신청 명단` : "",
+          s: cs(true, 14, "FFFFFF", HEAD_BG, false, "center"),
+        };
       }
+      merges.push({ s: { r: R, c: 0 }, e: { r: R, c: TOTAL_COLS - 1 } });
+      R++;
 
-      const ws = XLSX.utils.aoa_to_sheet(rows);
-      const colWidths = [];
-      activities.forEach((_, ai) => {
-        colWidths.push({ wch: 5 }, { wch: 10 }, { wch: 10 });
-        if (ai < actCount - 1) colWidths.push({ wch: 2 });
+      // ── 안내문
+      for (let c = 0; c < TOTAL_COLS; c++) {
+        ws[XLSX.utils.encode_cell({ r: R, c })] = {
+          v: c === 0 ? "※ 본인 학급 시트에만 입력  |  체험활동명 오탈자 주의" : "",
+          s: cs(false, 9, "555555", GUIDE_BG, false, "left"),
+        };
+      }
+      merges.push({ s: { r: R, c: 0 }, e: { r: R, c: TOTAL_COLS - 1 } });
+      R++;
+
+      // ── 체험활동별 세로 배치
+      activities.forEach((act, ai) => {
+        const n  = alloc[ci] ? alloc[ci][ai] : 0;
+        const bg = ACT_COLORS[ai % ACT_COLORS.length];
+
+        // 빈 행 (구분)
+        for (let c = 0; c < TOTAL_COLS; c++) {
+          ws[XLSX.utils.encode_cell({ r: R, c })] = { v: "", s: cs(false, 6, "FFFFFF", "FFFFFF", false) };
+        }
+        R++;
+
+        // 체험활동명 헤더
+        for (let c = 0; c < TOTAL_COLS; c++) {
+          ws[XLSX.utils.encode_cell({ r: R, c })] = {
+            v: c === 0 ? `${act.name}  (배정 ${n}명 / 전체 정원 ${act.capacity}명)` : "",
+            s: cs(true, 12, "FFFFFF", bg, false, "center"),
+          };
+        }
+        merges.push({ s: { r: R, c: 0 }, e: { r: R, c: TOTAL_COLS - 1 } });
+        R++;
+
+        // 컬럼 헤더
+        ["번호", "학번", "이름"].forEach((label, j) => {
+          ws[XLSX.utils.encode_cell({ r: R, c: j })] = {
+            v: label, s: cs(true, 10, "2D5016", HDR_BG, true, "center"),
+          };
+        });
+        R++;
+
+        // 입력 행
+        for (let r = 0; r < n; r++) {
+          ws[XLSX.utils.encode_cell({ r: R, c: 0 })] = {
+            v: r + 1, s: cs(false, 10, "888888", NUM_BG, true, "center"),
+          };
+          ws[XLSX.utils.encode_cell({ r: R, c: 1 })] = { v: "", s: cs(false, 10, "000000", "FFFFFF", true, "center") };
+          ws[XLSX.utils.encode_cell({ r: R, c: 2 })] = { v: "", s: cs(false, 10, "000000", "FFFFFF", true, "left") };
+          R++;
+        }
       });
-      ws["!cols"] = colWidths;
+
+      ws["!ref"]    = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: R - 1, c: TOTAL_COLS - 1 } });
+      ws["!cols"]   = [{ wch: 6 }, { wch: 14 }, { wch: 14 }];
       ws["!merges"] = merges;
+      // A4 세로 인쇄 설정
+      ws["!pageSetup"] = { paperSize: 9, orientation: "portrait", fitToPage: true, fitToWidth: 1, fitToHeight: 0 };
+
       XLSX.utils.book_append_sheet(wb, ws, cls.name.slice(0, 31));
     });
 
@@ -389,21 +448,75 @@ export default function App() {
   };
 
   const downloadAttendance = () => {
+    const HEAD_BG  = "2D5016";
+    const HDR_BG   = "E8F5D8";
+    const NUM_BG   = "F7F5F0";
+    const EVEN_BG  = "F7F5F0";
+    const ACT_COLORS = ["2D5016", "4A7C59", "6EA083"];
+
+    const cs = (bold, sz, color, bg, border) => ({
+      font:      { bold: bold || false, sz: sz || 10, color: { rgb: color || "000000" }, name: "맑은 고딕" },
+      fill:      { patternType: "solid", fgColor: { rgb: bg || "FFFFFF" } },
+      alignment: { horizontal: "center", vertical: "center" },
+      border: border ? {
+        top:    { style: "thin", color: { rgb: "AAAAAA" } },
+        bottom: { style: "thin", color: { rgb: "AAAAAA" } },
+        left:   { style: "thin", color: { rgb: "AAAAAA" } },
+        right:  { style: "thin", color: { rgb: "AAAAAA" } },
+      } : {},
+    });
+
     const wb = XLSX.utils.book_new();
     const periodLabels = selectedPeriods.map(p => `${p}교시`);
-    activities.forEach(act => {
-      const stus = activityMap[act.name] || [];
-      const rows = [
-        [`${act.name} 출석부 (정원 ${act.capacity}명)`],
-        ["번호", "학급", "학번", "이름", ...periodLabels, "비고"],
-        ...stus.map((stu, idx) => [idx + 1, stu.class, stu.id, stu.name, ...Array(periodLabels.length).fill(""), ""]),
-      ];
-      const ws = XLSX.utils.aoa_to_sheet(rows);
-      const totalCols = 4 + periodLabels.length + 1;
+    const headers = ["번호", "학급", "학번", "이름", ...periodLabels, "비고"];
+    const totalCols = headers.length;
+
+    activities.forEach((act, actIdx) => {
+      const stus  = activityMap[act.name] || [];
+      const ws    = {};
+      const actBg = ACT_COLORS[actIdx % ACT_COLORS.length];
+      let R = 0;
+
+      // ── 행0: 제목
+      for (let c = 0; c < totalCols; c++) {
+        ws[XLSX.utils.encode_cell({ r: R, c })] = {
+          v: c === 0 ? `${act.name} 출석부  (정원 ${act.capacity}명 / 신청 ${stus.length}명)` : "",
+          s: cs(true, 13, "FFFFFF", actBg, false),
+        };
+      }
+      ws["!merges"] = [{ s: { r: R, c: 0 }, e: { r: R, c: totalCols - 1 } }];
+      R++;
+
+      // ── 행1: 헤더
+      headers.forEach((h, c) => {
+        ws[XLSX.utils.encode_cell({ r: R, c })] = {
+          v: h, s: cs(true, 10, "2D5016", HDR_BG, true),
+        };
+      });
+      R++;
+
+      // ── 행2~: 학생 데이터
+      stus.forEach((stu, idx) => {
+        const rowBg = idx % 2 === 0 ? EVEN_BG : "FFFFFF";
+        [idx + 1, stu.class, stu.id, stu.name, ...Array(periodLabels.length).fill(""), ""].forEach((v, c) => {
+          ws[XLSX.utils.encode_cell({ r: R, c })] = {
+            v,
+            s: {
+              ...cs(false, 10, "000000", c === 0 ? NUM_BG : rowBg, true),
+              alignment: { horizontal: c === 3 || c === totalCols - 1 ? "left" : "center", vertical: "center" },
+            },
+          };
+        });
+        R++;
+      });
+
+      ws["!ref"]  = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: R - 1, c: totalCols - 1 } });
       ws["!cols"] = [{ wch: 5 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, ...Array(periodLabels.length).fill({ wch: 8 }), { wch: 14 }];
-      ws["!merges"] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: totalCols - 1 } }];
+      ws["!freeze"] = { xSplit: 0, ySplit: 2 };
+
       XLSX.utils.book_append_sheet(wb, ws, act.name.slice(0, 31));
     });
+
     XLSX.writeFile(wb, "체험활동_출석부.xlsx");
   };
 
@@ -426,23 +539,34 @@ export default function App() {
 
   return (
     <div style={{ minHeight: "100vh", background: C.bg, fontFamily: "'Noto Sans KR','Apple SD Gothic Neo',sans-serif", color: C.text, paddingBottom: 60 }}>
-      <div style={{ background: C.primary, color: "#fff", padding: "20px 40px 18px", borderBottom: `4px solid ${C.accent}` }}>
-        <div style={{ maxWidth: 860, margin: "0 auto" }}>
-          <div style={{ fontSize: 11, letterSpacing: 2, opacity: .7, marginBottom: 4 }}>진로체험 분반 출석부 자동 생성기</div>
-          <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800 }}>출석부 생성 마법사 🧙‍♀️</h1>
+      <div style={{ background: C.primary, color: "#fff", padding: "20px clamp(16px, 5vw, 40px) 18px", borderBottom: `4px solid ${C.accent}` }}>
+        <div style={{ maxWidth: 860, margin: "0 auto", width: "100%" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+            <div>
+              <div style={{ fontSize: 10, letterSpacing: 1, opacity: .7, marginBottom: 4 }}>진로체험 분반 출석부 자동 생성기</div>
+              <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800 }}>출석부 생성 마법사 🧙‍♀️</h1>
+            </div>
+            <button onClick={() => setShowGuide(true)} style={{
+              padding: "5px 10px", borderRadius: 20, border: "1.5px solid rgba(255,255,255,0.5)",
+              background: "transparent", color: "#fff", fontSize: 11, fontWeight: 600,
+              cursor: "pointer", fontFamily: "inherit", marginTop: 4, whiteSpace: "nowrap",
+            }}>📖 사용 안내</button>
+          </div>
         </div>
       </div>
 
-      <div style={{ maxWidth: 860, margin: "0 auto", padding: "22px 40px 0" }}>
+      <div style={{ maxWidth: 860, margin: "0 auto", padding: "22px clamp(16px, 5vw, 40px) 0", boxSizing: "border-box" }}>
         {/* 스텝 바 */}
-        <div style={{ display: "flex", alignItems: "center", marginBottom: 22 }}>
+        <div style={{ display: "flex", alignItems: "center", marginBottom: 16 }}>
           {STEPS.map(({ n, label }, i) => (
             <div key={n} style={{ display: "flex", alignItems: "center", flex: i < STEPS.length - 1 ? 1 : "none" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 7, cursor: step > n ? "pointer" : "default" }} onClick={() => step > n && setStep(n)}>
+              <div style={{ display: "flex", alignItems: "center", gap: 5, cursor: step > n ? "pointer" : "default" }} onClick={() => step > n && setStep(n)}>
                 <StepBadge n={n} active={step === n} done={step > n} />
-                <span style={{ fontSize: 11, fontWeight: step === n ? 700 : 400, color: step === n ? C.primary : step > n ? C.accent : C.muted, whiteSpace: "nowrap" }}>{label}</span>
+                {step === n && (
+                  <span style={{ fontSize: 11, fontWeight: 700, color: C.primary, whiteSpace: "nowrap" }}>{label}</span>
+                )}
               </div>
-              {i < STEPS.length - 1 && <div style={{ flex: 1, height: 2, margin: "0 8px", background: step > n ? C.accent : C.border }} />}
+              {i < STEPS.length - 1 && <div style={{ flex: 1, height: 2, margin: "0 6px", background: step > n ? C.accent : C.border }} />}
             </div>
           ))}
         </div>
@@ -450,7 +574,13 @@ export default function App() {
         {/* ══ STEP 1 ══ */}
         {step === 1 && (<>
           <Card>
-            <h2 style={{ margin: "0 0 18px", fontSize: 15, color: C.primary }}>⚙️ 기본 설정</h2>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
+              <h2 style={{ margin: 0, fontSize: 15, color: C.primary }}>⚙️ 기본 설정</h2>
+              <button onClick={resetSettings} style={{
+                padding: "5px 12px", borderRadius: 8, border: `1px solid ${C.border}`,
+                background: C.bg, color: C.muted, fontSize: 12, cursor: "pointer", fontFamily: "inherit",
+              }}>🔄 초기화</button>
+            </div>
 
             {/* 교시 */}
             <div style={{ marginBottom: 22 }}>
@@ -491,7 +621,7 @@ export default function App() {
                 <input value={newCls.name} onChange={e => setNewCls(p=>({...p,name:e.target.value}))}
                   onKeyDown={e => { if(e.key==="Enter"){ const v=newCls.name.trim(); if(v){setClasses(p=>[...p,{name:v,size:newCls.size}]);setNewCls({name:"",size:30});}}}}
                   placeholder="학급 이름 입력 후 Enter"
-                  style={{ ...inp, flex: 2, border: `1.5px dashed ${C.accent}`, background: C.accent2 }} />
+                  style={{ ...inp, flex: 1, minWidth: 0, border: `1.5px dashed ${C.accent}`, background: C.accent2 }} />
                 <input type="number" value={newCls.size} min={1} onChange={e => setNewCls(p=>({...p,size:Number(e.target.value)||30}))}
                   style={{ ...inp, width: 70, textAlign: "center" }} />
                 <span style={{ fontSize: 12, color: C.muted }}>명</span>
@@ -507,7 +637,7 @@ export default function App() {
                   <div key={act.id} style={{ display: "flex", gap: 8, alignItems: "center" }}>
                     <div style={{ width: 6, height: 6, borderRadius: "50%", background: C.accent, flexShrink: 0 }} />
                     <input value={act.name} onChange={e => setActivities(p=>p.map(a=>a.id===act.id?{...a,name:e.target.value}:a))}
-                      style={{ ...inp, flex: 2 }} />
+                      style={{ ...inp, flex: 1, minWidth: 0 }} />
                     <input type="number" value={act.capacity} min={0} onChange={e => setActivities(p=>p.map(a=>a.id===act.id?{...a,capacity:Number(e.target.value)||0}:a))}
                       style={{ ...inp, width: 70, textAlign: "center" }} />
                     <span style={{ fontSize: 12, color: C.muted }}>명</span>
@@ -516,16 +646,17 @@ export default function App() {
                   </div>
                 ))}
               </div>
-              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                <div style={{ width: 6, height: 6, borderRadius: "50%", background: C.border, flexShrink: 0 }} />
+              <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
                 <input value={newAct.name} onChange={e=>setNewAct(p=>({...p,name:e.target.value}))}
                   onKeyDown={e=>{if(e.key==="Enter"){const v=newAct.name.trim();if(v){setActivities(p=>[...p,{id:Date.now(),name:v,capacity:newAct.capacity}]);setNewAct({name:"",capacity:30});}}}}
                   placeholder="새 체험활동 이름"
-                  style={{ ...inp, flex: 2, border: `1.5px dashed ${C.accent}`, background: C.accent2 }} />
-                <input type="number" value={newAct.capacity} min={0} onChange={e=>setNewAct(p=>({...p,capacity:Number(e.target.value)||0}))}
-                  style={{ ...inp, width: 70, textAlign: "center" }} />
-                <span style={{ fontSize: 12, color: C.muted }}>명</span>
-                <Btn variant="accent" onClick={()=>{const v=newAct.name.trim();if(v){setActivities(p=>[...p,{id:Date.now(),name:v,capacity:newAct.capacity}]);setNewAct({name:"",capacity:30});}}}>+ 추가</Btn>
+                  style={{ ...inp, width: "100%", border: `1.5px dashed ${C.accent}`, background: C.accent2 }} />
+                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <input type="number" value={newAct.capacity} min={0} onChange={e=>setNewAct(p=>({...p,capacity:Number(e.target.value)||0}))}
+                    style={{ ...inp, flex: 1, textAlign: "center" }} />
+                  <span style={{ fontSize: 12, color: C.muted }}>명</span>
+                  <Btn variant="accent" onClick={()=>{const v=newAct.name.trim();if(v){setActivities(p=>[...p,{id:Date.now(),name:v,capacity:newAct.capacity}]);setNewAct({name:"",capacity:30});}}}} style={{ flex: 1 }}>+ 추가</Btn>
+                </div>
               </div>
             </div>
           </Card>
@@ -714,7 +845,13 @@ export default function App() {
 
             {uploadedClasses.length > 0 && (
               <>
-                <div style={{ fontSize: 12, color: C.muted, marginBottom: 6 }}>업로드 현황 ({uploadedClasses.length}/{classes.length})</div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                  <div style={{ fontSize: 12, color: C.muted }}>업로드 현황 ({uploadedClasses.length}/{classes.length})</div>
+                  <button onClick={resetUpload} style={{
+                    padding: "4px 12px", borderRadius: 8, border: `1px solid ${C.border}`,
+                    background: C.bg, color: C.muted, fontSize: 12, cursor: "pointer", fontFamily: "inherit",
+                  }}>🗑️ 초기화</button>
+                </div>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 7, marginBottom: 10 }}>
                   {classes.map(cls => {
                     const ok = uploadedClasses.includes(cls.name);
@@ -852,9 +989,78 @@ export default function App() {
         </>)}
       </div>
 
+      {/* 사용 안내 모달 */}
+      {showGuide && (
+        <div style={{
+          position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
+          background: "rgba(0,0,0,0.5)", zIndex: 1000,
+          display: "flex", alignItems: "center", justifyContent: "center",
+          padding: 20,
+        }} onClick={() => setShowGuide(false)}>
+          <div style={{
+            background: C.card, borderRadius: 20, padding: "28px 28px",
+            maxWidth: 560, width: "100%", maxHeight: "85vh", overflowY: "auto",
+            boxShadow: "0 8px 40px rgba(0,0,0,0.2)",
+          }} onClick={e => e.stopPropagation()}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+              <h2 style={{ margin: 0, fontSize: 17, color: C.primary }}>📖 사용 안내</h2>
+              <button onClick={() => setShowGuide(false)} style={{ border: "none", background: "transparent", fontSize: 20, cursor: "pointer", color: C.muted }}>✕</button>
+            </div>
+
+            {[
+              { step: "STEP 1", title: "기본 설정", color: C.primary, items: [
+                "체험활동이 진행되는 교시를 선택하세요 (복수 선택 가능)",
+                "학급 이름과 학급 인원 수를 입력하세요",
+                "체험활동 이름과 전체 정원을 입력하세요",
+                "⚠️ 전체 정원 합계가 전체 학생 수보다 많아야 해요",
+              ]},
+              { step: "STEP 2", title: "배분표 조정 & 서식 다운로드", color: C.primary, items: [
+                "자동으로 계산된 학급별 배분표를 확인하세요",
+                "숫자를 직접 수정할 수 있어요 (정원 초과 시 빨간색 경고)",
+                "서식 다운로드 후 담임선생님들께 배포하세요",
+              ]},
+              { step: "STEP 3", title: "명단 업로드", color: C.primary, items: [
+                "담임선생님들이 입력한 파일을 받아 업로드하세요",
+                "⚠️ 시트 이름(탭) 변경 금지",
+                "⚠️ 체험활동명 오탈자 주의",
+              ]},
+              { step: "STEP 4", title: "출석부 생성", color: C.primary, items: [
+                "체험활동별 출석부를 확인하고 엑셀로 다운로드하세요",
+              ]},
+            ].map(({ step, title, color, items }) => (
+              <div key={step} style={{ marginBottom: 20 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                  <span style={{ background: color, color: "#fff", borderRadius: 20, padding: "2px 10px", fontSize: 11, fontWeight: 700 }}>{step}</span>
+                  <span style={{ fontSize: 14, fontWeight: 700, color: C.primary }}>{title}</span>
+                </div>
+                <ul style={{ margin: 0, paddingLeft: 18, textAlign: "left" }}>
+                  {items.map((item, i) => (
+                    <li key={i} style={{ fontSize: 12, color: C.text, lineHeight: 1.8, textAlign: "left" }}>{item}</li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+
+            <div style={{ borderTop: `1px solid ${C.border}`, paddingTop: 16, marginTop: 4 }}>
+              <div style={{ fontSize: 13, color: C.muted, lineHeight: 1.8 }}>
+                <strong style={{ color: C.primary }}>📧 문의 및 오류 신고</strong><br />
+                사용 중 문제가 발생하거나 개선 사항이 있으면 편하게 연락 주세요!<br />
+                <a href="mailto:kkongmu@naver.com" style={{ color: C.accent, fontWeight: 600 }}>kkongmu@naver.com</a>
+              </div>
+            </div>
+
+            <button onClick={() => setShowGuide(false)} style={{
+              width: "100%", marginTop: 20, padding: "11px", borderRadius: 10,
+              border: "none", background: C.primary, color: "#fff",
+              fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: "inherit",
+            }}>확인</button>
+          </div>
+        </div>
+      )}
+
       {/* 푸터 */}
       <div style={{ textAlign: "center", padding: "32px 0 16px", fontSize: 12, color: C.muted, opacity: .6 }}>
-        Made by 키키쌤 🧙‍♀️
+        Made by <a href="mailto:kkongmu@naver.com" style={{ color: C.muted, textDecoration: "none" }}>키키쌤 🧙‍♀️</a>
       </div>
     </div>
   );

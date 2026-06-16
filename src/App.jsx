@@ -8,60 +8,44 @@ const C = {
   tag: "#EAF4DC", info: "#2B6CB0", infoBg: "#EBF8FF", infoBorder: "#90CDF4",
 };
 
-// 핵심 배분 알고리즘
-// 각 학급 인원을 체험활동별 정원 비율에 맞춰 배분
-// 정원 합계가 전체 학생 수보다 많아야 함
+// 핵심 배분 알고리즘 v2
+// 전체 학생을 체험활동별로 먼저 균등 배분한 뒤, 학급별로 나눔
+// → 마지막 반에 0명 나오는 문제 해결
 function autoAllocate(classes, activities) {
-  // classes: [{name, size}], activities: [{id, name, capacity}]
-  const totalCap = activities.reduce((s, a) => s + a.capacity, 0);
+  const totalCap      = activities.reduce((s, a) => s + a.capacity, 0);
   const totalStudents = classes.reduce((s, c) => s + c.size, 0);
+  const numClasses    = classes.length;
+  const numActs       = activities.length;
 
-  // 결과: alloc[classIdx][actIdx] = 배정 인원
-  const alloc = classes.map(cls => activities.map(() => 0));
+  // 1단계: 전체 학생을 체험활동별로 몇 명씩 배정할지 결정
+  //        정원 비율에 맞게 나누되, 전체 학생 수를 넘지 않게
+  const actTotal = activities.map(act => {
+    const ratio = totalCap > 0 ? act.capacity / totalCap : 1 / numActs;
+    return Math.round(totalStudents * ratio);
+  });
+  // 합계 보정
+  let diff = totalStudents - actTotal.reduce((s, n) => s + n, 0);
+  for (let i = 0; diff > 0 && i < numActs; i++) {
+    if (actTotal[i] < activities[i].capacity) { actTotal[i]++; diff--; }
+  }
+  for (let i = 0; diff < 0 && i < numActs; i++) {
+    if (actTotal[i] > 0) { actTotal[i]--; diff++; }
+  }
 
-  // 남은 정원 추적
-  const remaining = activities.map(a => a.capacity);
+  // 2단계: 각 체험활동별로 학급에 균등 배분
+  const alloc = classes.map(() => activities.map(() => 0));
 
-  classes.forEach((cls, ci) => {
-    let leftStudents = cls.size;
-    const actCount = activities.length;
+  activities.forEach((act, ai) => {
+    const total = Math.min(actTotal[ai], act.capacity);
+    const base  = Math.floor(total / numClasses);
+    const extra = total % numClasses;
 
-    // 비율 계산: 각 활동의 정원 / 전체 정원 * 학급인원
-    let assigned = activities.map((act, ai) => {
-      const ratio = totalCap > 0 ? act.capacity / totalCap : 1 / actCount;
-      return Math.floor(cls.size * ratio);
-    });
-
-    // 배정 합계와 학급인원 차이 (나머지) 처리
-    let sumAssigned = assigned.reduce((s, n) => s + n, 0);
-    let diff = cls.size - sumAssigned;
-
-    // 나머지를 소수점 큰 순서대로 배분
-    const fractions = activities.map((act, ai) => {
-      const ratio = totalCap > 0 ? act.capacity / totalCap : 1 / actCount;
-      return { ai, frac: cls.size * ratio - Math.floor(cls.size * ratio) };
-    }).sort((a, b) => b.frac - a.frac);
-
-    for (let i = 0; i < diff; i++) {
-      assigned[fractions[i % fractions.length].ai]++;
-    }
-
-    // 정원 초과 보정
-    activities.forEach((act, ai) => {
-      if (assigned[ai] > remaining[ai]) assigned[ai] = remaining[ai];
-    });
-
-    // 합계가 학급인원보다 적으면 남은 정원 있는 활동에 추가
-    let total = assigned.reduce((s, n) => s + n, 0);
-    let shortage = cls.size - total;
-    for (let ai = 0; ai < actCount && shortage > 0; ai++) {
-      const canAdd = Math.min(shortage, remaining[ai] - assigned[ai]);
-      if (canAdd > 0) { assigned[ai] += canAdd; shortage -= canAdd; }
-    }
-
-    assigned.forEach((n, ai) => {
-      alloc[ci][ai] = n;
-      remaining[ai] -= n;
+    // 셔플 인덱스: 어느 반이 +1 받을지 고르게 분산
+    const indices = Array.from({ length: numClasses }, (_, i) => i);
+    // 활동마다 다른 반이 +1 받도록 offset
+    const offset  = ai % numClasses;
+    indices.forEach((_, i) => {
+      alloc[i][ai] = base + ((i + offset) % numClasses < extra ? 1 : 0);
     });
   });
 
@@ -141,6 +125,9 @@ export default function App() {
   useEffect(() => { localStorage.setItem("kiki_classes", JSON.stringify(classes)); }, [classes]);
   useEffect(() => { localStorage.setItem("kiki_activities", JSON.stringify(activities)); }, [activities]);
   useEffect(() => { localStorage.setItem("kiki_periods", JSON.stringify(selectedPeriods)); }, [selectedPeriods]);
+  useEffect(() => {
+    if (alloc.length > 0) localStorage.setItem("kiki_alloc", JSON.stringify(alloc));
+  }, [alloc]);
 
   // 설정 초기화
   const resetSettings = () => {
@@ -155,6 +142,7 @@ export default function App() {
     localStorage.removeItem("kiki_classes");
     localStorage.removeItem("kiki_activities");
     localStorage.removeItem("kiki_periods");
+    localStorage.removeItem("kiki_alloc");
   };
 
   // 업로드 데이터 초기화
@@ -168,7 +156,7 @@ export default function App() {
   };
 
   // 배분표: alloc[classIdx][actIdx] = 인원 (수동 수정 가능)
-  const [alloc, setAlloc] = useState([]);
+  const [alloc, setAlloc] = useState(() => loadSaved("kiki_alloc", []));
   const [allocInitialized, setAllocInitialized] = useState(false);
 
   // 업로드

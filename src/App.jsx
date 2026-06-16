@@ -149,6 +149,38 @@ export default function App() {
     localStorage.removeItem("kiki_alloc");
   };
 
+  // 프리셋 관리 (최대 4개)
+  const [presets, setPresets] = useState(() => loadSaved("kiki_presets", []));
+  const [showPresetModal, setShowPresetModal] = useState(false);
+  const [presetName, setPresetName] = useState("");
+
+  useEffect(() => { localStorage.setItem("kiki_presets", JSON.stringify(presets)); }, [presets]);
+
+  const savePreset = () => {
+    const name = presetName.trim();
+    if (!name) return;
+    const preset = { name, classes, activities, selectedPeriods, alloc, savedAt: new Date().toLocaleDateString("ko-KR") };
+    setPresets(prev => {
+      const filtered = prev.filter(p => p.name !== name);
+      return [...filtered, preset].slice(-4); // 최대 4개
+    });
+    setPresetName("");
+    setShowPresetModal(false);
+  };
+
+  const loadPreset = (preset) => {
+    if (!window.confirm(`"${preset.name}" 설정을 불러올까요? 현재 설정이 바뀌어요.`)) return;
+    setClasses(preset.classes);
+    setActivities(preset.activities);
+    setSelectedPeriods(preset.selectedPeriods);
+    setAlloc(preset.alloc || []);
+    setStep(1);
+  };
+
+  const deletePreset = (name) => {
+    setPresets(prev => prev.filter(p => p.name !== name));
+  };
+
   // 업로드 데이터 초기화
   const resetUpload = () => {
     setClassData({});
@@ -563,11 +595,33 @@ export default function App() {
           <Card>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
               <h2 style={{ margin: 0, fontSize: 15, color: C.primary }}>⚙️ 기본 설정</h2>
-              <button onClick={resetSettings} style={{
-                padding: "5px 12px", borderRadius: 8, border: `1px solid ${C.border}`,
-                background: C.bg, color: C.muted, fontSize: 12, cursor: "pointer", fontFamily: "inherit",
-              }}>🔄 초기화</button>
+              <div style={{ display: "flex", gap: 6 }}>
+                <button onClick={() => setShowPresetModal(true)} style={{
+                  padding: "5px 12px", borderRadius: 8, border: `1px solid ${C.accent}`,
+                  background: C.accent2, color: C.primary, fontSize: 12, cursor: "pointer", fontFamily: "inherit", fontWeight: 600,
+                }}>💾 프리셋</button>
+                <button onClick={resetSettings} style={{
+                  padding: "5px 12px", borderRadius: 8, border: `1px solid ${C.border}`,
+                  background: C.bg, color: C.muted, fontSize: 12, cursor: "pointer", fontFamily: "inherit",
+                }}>🔄 초기화</button>
+              </div>
             </div>
+
+            {/* 프리셋 목록 */}
+            {presets.length > 0 && (
+              <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 16 }}>
+                {presets.map(p => (
+                  <div key={p.name} style={{ display: "flex", alignItems: "center", gap: 5, background: C.infoBg, border: `1px solid ${C.infoBorder}`, borderRadius: 10, padding: "5px 10px" }}>
+                    <div>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: C.info }}>{p.name}</div>
+                      <div style={{ fontSize: 10, color: C.muted }}>{p.savedAt}</div>
+                    </div>
+                    <button onClick={() => loadPreset(p)} style={{ padding: "3px 8px", borderRadius: 6, border: "none", background: C.info, color: "#fff", fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}>불러오기</button>
+                    <button onClick={() => deletePreset(p.name)} style={{ padding: "3px 6px", borderRadius: 6, border: "none", background: "#FEE", color: C.danger, fontSize: 11, cursor: "pointer" }}>✕</button>
+                  </div>
+                ))}
+              </div>
+            )}
 
             {/* 교시 */}
             <div style={{ marginBottom: 22 }}>
@@ -975,6 +1029,59 @@ export default function App() {
           </div>
         </>)}
       </div>
+
+      {/* 프리셋 저장 모달 */}
+      {showPresetModal && (
+        <div style={{
+          position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
+          background: "rgba(0,0,0,0.5)", zIndex: 1000,
+          display: "flex", alignItems: "center", justifyContent: "center", padding: 20,
+        }} onClick={() => setShowPresetModal(false)}>
+          <div style={{
+            background: C.card, borderRadius: 20, padding: "28px",
+            maxWidth: 400, width: "100%",
+            boxShadow: "0 8px 40px rgba(0,0,0,0.2)",
+          }} onClick={e => e.stopPropagation()}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+              <h2 style={{ margin: 0, fontSize: 16, color: C.primary }}>💾 프리셋 저장</h2>
+              <button onClick={() => setShowPresetModal(false)} style={{ border: "none", background: "transparent", fontSize: 20, cursor: "pointer", color: C.muted }}>✕</button>
+            </div>
+            <p style={{ margin: "0 0 16px", fontSize: 13, color: C.muted }}>
+              현재 설정(학급, 체험활동, 교시, 배분표)을 저장해요.<br />
+              최대 4개까지 저장 가능합니다.
+            </p>
+            <input
+              value={presetName}
+              onChange={e => setPresetName(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && savePreset()}
+              placeholder="프리셋 이름 (예: 1학년 3교시)"
+              style={{
+                width: "100%", padding: "10px 14px", borderRadius: 10,
+                border: `1.5px solid ${C.accent}`, fontSize: 14,
+                fontFamily: "inherit", outline: "none", boxSizing: "border-box",
+                marginBottom: 12,
+              }}
+              autoFocus
+            />
+            {presets.length >= 4 && (
+              <div style={{ fontSize: 12, color: C.warn, marginBottom: 10 }}>
+                ⚠️ 4개가 저장되어 있어요. 같은 이름으로 저장하면 덮어쓰고, 새 이름이면 가장 오래된 게 삭제돼요.
+              </div>
+            )}
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={() => setShowPresetModal(false)} style={{
+                flex: 1, padding: "10px", borderRadius: 10, border: `1.5px solid ${C.border}`,
+                background: C.bg, color: C.muted, fontSize: 14, cursor: "pointer", fontFamily: "inherit",
+              }}>취소</button>
+              <button onClick={savePreset} style={{
+                flex: 2, padding: "10px", borderRadius: 10, border: "none",
+                background: C.primary, color: "#fff", fontSize: 14, fontWeight: 700,
+                cursor: "pointer", fontFamily: "inherit",
+              }}>저장</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 사용 안내 모달 */}
       {showGuide && (

@@ -735,7 +735,10 @@ export default function App() {
           <Card>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
               <h2 style={{ margin: 0, fontSize: 15, color: C.primary }}>📊 학급별 체험활동 배분표</h2>
-              <Btn variant="ghost" onClick={computeAlloc} style={{ fontSize: 12, padding: "6px 14px" }}>🔄 자동 재계산</Btn>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ fontSize: 11, color: C.accent, fontWeight: 600 }}>✅ 자동 저장됨</span>
+                <Btn variant="ghost" onClick={computeAlloc} style={{ fontSize: 12, padding: "6px 14px" }}>🔄 자동 재계산</Btn>
+              </div>
             </div>
             <p style={{ margin: "0 0 16px", fontSize: 13, color: C.muted }}>
               각 학급 인원을 체험활동 정원 비율에 맞게 자동 배분했습니다.<br />

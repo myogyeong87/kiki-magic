@@ -117,7 +117,7 @@ export default function App() {
 
   // 체험활동: {id, name, capacity}
   const [activities, setActivities] = useState(() => loadSaved("kiki_activities", []));
-  const [newAct, setNewAct] = useState({ name: "", capacity: 30 });
+  const [newAct, setNewAct] = useState({ name: "", capacity: 30, location: "" });
 
   const [selectedPeriods, setSelectedPeriods] = useState(() => loadSaved("kiki_periods", []));
 
@@ -551,6 +551,119 @@ export default function App() {
   const totalUploadedStudents = Object.values(classData).flat().length;
   const unassigned = Object.values(classData).flat().filter(s => s.activity && !actNames.includes(s.activity));
   const overCapActs = activities.filter(act => (activityMap[act.name] || []).length > act.capacity);
+
+  // 학급별 안내문 다운로드
+  const downloadGuide = () => {
+    const ACT_COLORS = ["2D5016", "4A7C59", "6EA083"];
+    const HEAD_BG  = "2D5016";
+    const HDR_BG   = "E8F5D8";
+    const NUM_BG   = "F7F5F0";
+    const GUIDE_BG = "FFF9E6";
+
+    const cs = (bold, sz, color, bg, border, align) => ({
+      font:      { bold: bold||false, sz: sz||10, color: { rgb: color||"000000" }, name: "맑은 고딕" },
+      fill:      { patternType: "solid", fgColor: { rgb: bg||"FFFFFF" } },
+      alignment: { horizontal: align||"center", vertical: "center", wrapText: true },
+      border: border ? {
+        top:    { style: "thin", color: { rgb: "AAAAAA" } },
+        bottom: { style: "thin", color: { rgb: "AAAAAA" } },
+        left:   { style: "thin", color: { rgb: "AAAAAA" } },
+        right:  { style: "thin", color: { rgb: "AAAAAA" } },
+      } : {},
+    });
+
+    const wb = XLSX.utils.book_new();
+    const TOTAL_COLS = 4; // 번호 | 이름 | 체험활동 | 장소
+
+    // 학급별 학생 데이터 재구성 (activityMap에서 역으로)
+    const classStudentMap = {}; // {학급명: [{id, name, activity, location}]}
+    activities.forEach(act => {
+      const stus = activityMap[act.name] || [];
+      stus.forEach(stu => {
+        if (!classStudentMap[stu.class]) classStudentMap[stu.class] = [];
+        classStudentMap[stu.class].push({
+          id: stu.id, name: stu.name,
+          activity: act.name,
+          location: act.location || "-",
+        });
+      });
+    });
+
+    // 학번순 정렬
+    Object.keys(classStudentMap).forEach(cls => {
+      classStudentMap[cls].sort((a, b) => String(a.id).localeCompare(String(b.id), undefined, { numeric: true }));
+    });
+
+    classes.forEach(cls => {
+      const stus = classStudentMap[cls.name] || [];
+      const ws   = {};
+      const merges = [];
+      let R = 0;
+
+      // 제목
+      for (let c = 0; c < TOTAL_COLS; c++) {
+        ws[XLSX.utils.encode_cell({ r: R, c })] = {
+          v: c === 0 ? `[${cls.name}] 체험활동 이동 안내` : "",
+          s: cs(true, 14, "FFFFFF", HEAD_BG, false, "center"),
+        };
+      }
+      merges.push({ s: { r: R, c: 0 }, e: { r: R, c: TOTAL_COLS - 1 } });
+      R++;
+
+      // 안내사항
+      const notices = [
+        "본인이 신청한 체험활동 장소로 이동하세요.",
+        "필기도구를 반드시 지참하세요.",
+      ];
+      notices.forEach(notice => {
+        for (let c = 0; c < TOTAL_COLS; c++) {
+          ws[XLSX.utils.encode_cell({ r: R, c })] = {
+            v: c === 0 ? `📢 ${notice}` : "",
+            s: { ...cs(false, 10, "7A5C00", GUIDE_BG, false, "left") },
+          };
+        }
+        merges.push({ s: { r: R, c: 0 }, e: { r: R, c: TOTAL_COLS - 1 } });
+        R++;
+      });
+
+      // 빈 행
+      for (let c = 0; c < TOTAL_COLS; c++) {
+        ws[XLSX.utils.encode_cell({ r: R, c })] = { v: "", s: cs(false, 6, "FFFFFF", "FFFFFF", false) };
+      }
+      R++;
+
+      // 헤더
+      ["번호", "이름", "체험활동", "장소"].forEach((h, c) => {
+        ws[XLSX.utils.encode_cell({ r: R, c })] = {
+          v: h, s: cs(true, 10, "2D5016", HDR_BG, true, "center"),
+        };
+      });
+      R++;
+
+      // 학생 데이터
+      stus.forEach((stu, idx) => {
+        const actIdx = activities.findIndex(a => a.name === stu.activity);
+        const rowBg  = idx % 2 === 0 ? "F7F5F0" : "FFFFFF";
+        const actBg  = actIdx >= 0 ? ACT_COLORS[actIdx % ACT_COLORS.length] : "888888";
+
+        ws[XLSX.utils.encode_cell({ r: R, c: 0 })] = { v: idx+1, s: cs(false, 10, "888888", NUM_BG, true, "center") };
+        ws[XLSX.utils.encode_cell({ r: R, c: 1 })] = { v: stu.name, s: cs(true, 10, "000000", rowBg, true, "left") };
+        ws[XLSX.utils.encode_cell({ r: R, c: 2 })] = { v: stu.activity, s: cs(true, 10, "FFFFFF", actBg, true, "center") };
+        ws[XLSX.utils.encode_cell({ r: R, c: 3 })] = { v: stu.location, s: cs(false, 10, "000000", rowBg, true, "center") };
+        R++;
+      });
+
+      ws["!ref"]      = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: R - 1, c: TOTAL_COLS - 1 } });
+      ws["!cols"]     = [{ wch: 5 }, { wch: 12 }, { wch: 16 }, { wch: 14 }];
+      ws["!merges"]   = merges;
+      ws["!freeze"]   = { xSplit: 0, ySplit: R - stus.length };
+      ws["!pageSetup"] = { paperSize: 9, orientation: "portrait", fitToPage: true, fitToWidth: 1, fitToHeight: 0 };
+
+      XLSX.utils.book_append_sheet(wb, ws, cls.name.slice(0, 31));
+    });
+
+    XLSX.writeFile(wb, "체험활동_학급별_안내문.xlsx");
+  };
 
   const STEPS = [
     { n: 1, label: "기본 설정" },

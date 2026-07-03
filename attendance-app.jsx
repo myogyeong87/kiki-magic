@@ -8,60 +8,44 @@ const C = {
   tag: "#EAF4DC", info: "#2B6CB0", infoBg: "#EBF8FF", infoBorder: "#90CDF4",
 };
 
-// 핵심 배분 알고리즘
-// 각 학급 인원을 체험활동별 정원 비율에 맞춰 배분
-// 정원 합계가 전체 학생 수보다 많아야 함
+// 핵심 배분 알고리즘 v2
+// 전체 학생을 체험활동별로 먼저 균등 배분한 뒤, 학급별로 나눔
+// → 마지막 반에 0명 나오는 문제 해결
 function autoAllocate(classes, activities) {
-  // classes: [{name, size}], activities: [{id, name, capacity}]
-  const totalCap = activities.reduce((s, a) => s + a.capacity, 0);
+  const totalCap      = activities.reduce((s, a) => s + a.capacity, 0);
   const totalStudents = classes.reduce((s, c) => s + c.size, 0);
+  const numClasses    = classes.length;
+  const numActs       = activities.length;
 
-  // 결과: alloc[classIdx][actIdx] = 배정 인원
-  const alloc = classes.map(cls => activities.map(() => 0));
+  // 1단계: 전체 학생을 체험활동별로 몇 명씩 배정할지 결정
+  //        정원 비율에 맞게 나누되, 전체 학생 수를 넘지 않게
+  const actTotal = activities.map(act => {
+    const ratio = totalCap > 0 ? act.capacity / totalCap : 1 / numActs;
+    return Math.round(totalStudents * ratio);
+  });
+  // 합계 보정
+  let diff = totalStudents - actTotal.reduce((s, n) => s + n, 0);
+  for (let i = 0; diff > 0 && i < numActs; i++) {
+    if (actTotal[i] < activities[i].capacity) { actTotal[i]++; diff--; }
+  }
+  for (let i = 0; diff < 0 && i < numActs; i++) {
+    if (actTotal[i] > 0) { actTotal[i]--; diff++; }
+  }
 
-  // 남은 정원 추적
-  const remaining = activities.map(a => a.capacity);
+  // 2단계: 각 체험활동별로 학급에 균등 배분
+  const alloc = classes.map(() => activities.map(() => 0));
 
-  classes.forEach((cls, ci) => {
-    let leftStudents = cls.size;
-    const actCount = activities.length;
+  activities.forEach((act, ai) => {
+    const total = Math.min(actTotal[ai], act.capacity);
+    const base  = Math.floor(total / numClasses);
+    const extra = total % numClasses;
 
-    // 비율 계산: 각 활동의 정원 / 전체 정원 * 학급인원
-    let assigned = activities.map((act, ai) => {
-      const ratio = totalCap > 0 ? act.capacity / totalCap : 1 / actCount;
-      return Math.floor(cls.size * ratio);
-    });
-
-    // 배정 합계와 학급인원 차이 (나머지) 처리
-    let sumAssigned = assigned.reduce((s, n) => s + n, 0);
-    let diff = cls.size - sumAssigned;
-
-    // 나머지를 소수점 큰 순서대로 배분
-    const fractions = activities.map((act, ai) => {
-      const ratio = totalCap > 0 ? act.capacity / totalCap : 1 / actCount;
-      return { ai, frac: cls.size * ratio - Math.floor(cls.size * ratio) };
-    }).sort((a, b) => b.frac - a.frac);
-
-    for (let i = 0; i < diff; i++) {
-      assigned[fractions[i % fractions.length].ai]++;
-    }
-
-    // 정원 초과 보정
-    activities.forEach((act, ai) => {
-      if (assigned[ai] > remaining[ai]) assigned[ai] = remaining[ai];
-    });
-
-    // 합계가 학급인원보다 적으면 남은 정원 있는 활동에 추가
-    let total = assigned.reduce((s, n) => s + n, 0);
-    let shortage = cls.size - total;
-    for (let ai = 0; ai < actCount && shortage > 0; ai++) {
-      const canAdd = Math.min(shortage, remaining[ai] - assigned[ai]);
-      if (canAdd > 0) { assigned[ai] += canAdd; shortage -= canAdd; }
-    }
-
-    assigned.forEach((n, ai) => {
-      alloc[ci][ai] = n;
-      remaining[ai] -= n;
+    // 셔플 인덱스: 어느 반이 +1 받을지 고르게 분산
+    const indices = Array.from({ length: numClasses }, (_, i) => i);
+    // 활동마다 다른 반이 +1 받도록 offset
+    const offset  = ai % numClasses;
+    indices.forEach((_, i) => {
+      alloc[i][ai] = base + ((i + offset) % numClasses < extra ? 1 : 0);
     });
   });
 
@@ -133,14 +117,26 @@ export default function App() {
 
   // 체험활동: {id, name, capacity}
   const [activities, setActivities] = useState(() => loadSaved("kiki_activities", []));
-  const [newAct, setNewAct] = useState({ name: "", capacity: 30 });
+  const [newAct, setNewAct] = useState({ name: "", capacity: 30, location: "" });
 
   const [selectedPeriods, setSelectedPeriods] = useState(() => loadSaved("kiki_periods", []));
+
+  // 배분표: alloc[classIdx][actIdx] = 인원 (수동 수정 가능)
+  const [alloc, setAlloc] = useState(() => loadSaved("kiki_alloc", []));
+  const [allocInitialized, setAllocInitialized] = useState(false);
 
   // 설정 변경 시 자동 저장
   useEffect(() => { localStorage.setItem("kiki_classes", JSON.stringify(classes)); }, [classes]);
   useEffect(() => { localStorage.setItem("kiki_activities", JSON.stringify(activities)); }, [activities]);
   useEffect(() => { localStorage.setItem("kiki_periods", JSON.stringify(selectedPeriods)); }, [selectedPeriods]);
+  useEffect(() => {
+    if (alloc.length > 0) {
+      localStorage.setItem("kiki_alloc", JSON.stringify(alloc));
+      setAllocSaved(true);
+      const t = setTimeout(() => setAllocSaved(false), 2000);
+      return () => clearTimeout(t);
+    }
+  }, [alloc]);
 
   // 설정 초기화
   const resetSettings = () => {
@@ -155,6 +151,42 @@ export default function App() {
     localStorage.removeItem("kiki_classes");
     localStorage.removeItem("kiki_activities");
     localStorage.removeItem("kiki_periods");
+    localStorage.removeItem("kiki_alloc");
+  };
+
+  // 배분표 저장됨 표시
+  const [allocSaved, setAllocSaved] = useState(false);
+
+  // 프리셋 관리 (최대 4개)
+  const [presets, setPresets] = useState(() => loadSaved("kiki_presets", []));
+  const [showPresetModal, setShowPresetModal] = useState(false);
+  const [presetName, setPresetName] = useState("");
+
+  useEffect(() => { localStorage.setItem("kiki_presets", JSON.stringify(presets)); }, [presets]);
+
+  const savePreset = () => {
+    const name = presetName.trim();
+    if (!name) return;
+    const preset = { name, classes, activities, selectedPeriods, alloc, savedAt: new Date().toLocaleDateString("ko-KR") };
+    setPresets(prev => {
+      const filtered = prev.filter(p => p.name !== name);
+      return [...filtered, preset].slice(-4); // 최대 4개
+    });
+    setPresetName("");
+    setShowPresetModal(false);
+  };
+
+  const loadPreset = (preset) => {
+    if (!window.confirm(`"${preset.name}" 설정을 불러올까요? 현재 설정이 바뀌어요.`)) return;
+    setClasses(preset.classes);
+    setActivities(preset.activities);
+    setSelectedPeriods(preset.selectedPeriods);
+    setAlloc(preset.alloc || []);
+    setStep(1);
+  };
+
+  const deletePreset = (name) => {
+    setPresets(prev => prev.filter(p => p.name !== name));
   };
 
   // 업로드 데이터 초기화
@@ -162,14 +194,9 @@ export default function App() {
     setClassData({});
     setUploadErrors([]);
     setActivityMap({});
-    // 파일 input 초기화
     const fi = document.getElementById("fileInput");
     if (fi) fi.value = "";
   };
-
-  // 배분표: alloc[classIdx][actIdx] = 인원 (수동 수정 가능)
-  const [alloc, setAlloc] = useState([]);
-  const [allocInitialized, setAllocInitialized] = useState(false);
 
   // 업로드
   const [classData, setClassData] = useState({});
@@ -216,11 +243,12 @@ export default function App() {
     const GUIDE_BG   = "F0F7E8";
     const HDR_BG     = "E8F5D8";
     const NUM_BG     = "F7F5F0";
+    const TOTAL_COLS = 3; // 번호 | 학번 | 이름 (A4 가로에 맞게 3열 고정)
 
-    const cs = (bold, sz, color, bg, border) => ({
+    const cs = (bold, sz, color, bg, border, align) => ({
       font:      { bold: bold || false, sz: sz || 10, color: { rgb: color || "000000" }, name: "맑은 고딕" },
       fill:      { patternType: "solid", fgColor: { rgb: bg || "FFFFFF" } },
-      alignment: { horizontal: "center", vertical: "center", wrapText: true },
+      alignment: { horizontal: align || "center", vertical: "center", wrapText: true },
       border: border ? {
         top:    { style: "thin", color: { rgb: "AAAAAA" } },
         bottom: { style: "thin", color: { rgb: "AAAAAA" } },
@@ -232,108 +260,75 @@ export default function App() {
     const wb = XLSX.utils.book_new();
 
     classes.forEach((cls, ci) => {
-      const actCount   = activities.length;
-      const colsPerAct = 3;
-      const gapCols    = 1;
-      const totalCols  = actCount * colsPerAct + (actCount - 1) * gapCols;
-      const actRows    = activities.map((_, ai) => alloc[ci] ? alloc[ci][ai] : 0);
-      const maxRows    = Math.max(...actRows, 1);
-      const merges     = [];
-      const ws         = {};
-
+      const merges = [];
+      const ws     = {};
       let R = 0;
 
-      // ── 행0: 제목
-      for (let c = 0; c < totalCols; c++) {
+      // ── 제목
+      for (let c = 0; c < TOTAL_COLS; c++) {
         ws[XLSX.utils.encode_cell({ r: R, c })] = {
           v: c === 0 ? `[${cls.name}] 체험활동 신청 명단` : "",
-          s: cs(true, 14, "FFFFFF", HEAD_BG, false),
+          s: cs(true, 14, "FFFFFF", HEAD_BG, false, "center"),
         };
       }
-      merges.push({ s: { r: R, c: 0 }, e: { r: R, c: totalCols - 1 } });
+      merges.push({ s: { r: R, c: 0 }, e: { r: R, c: TOTAL_COLS - 1 } });
       R++;
 
-      // ── 행1: 안내문
-      for (let c = 0; c < totalCols; c++) {
+      // ── 안내문
+      for (let c = 0; c < TOTAL_COLS; c++) {
         ws[XLSX.utils.encode_cell({ r: R, c })] = {
-          v: c === 0 ? "※ 본인 학급 시트에만 입력  |  학번·이름을 해당 체험활동 칸에 입력  |  체험활동명 오탈자 주의" : "",
-          s: { ...cs(false, 9, "555555", GUIDE_BG, false), alignment: { horizontal: "left", vertical: "center" } },
+          v: c === 0 ? "※ 본인 학급 시트에만 입력  |  체험활동명 오탈자 주의" : "",
+          s: cs(false, 9, "555555", GUIDE_BG, false, "left"),
         };
       }
-      merges.push({ s: { r: R, c: 0 }, e: { r: R, c: totalCols - 1 } });
+      merges.push({ s: { r: R, c: 0 }, e: { r: R, c: TOTAL_COLS - 1 } });
       R++;
 
-      // ── 행2: 빈 행
-      for (let c = 0; c < totalCols; c++) {
-        ws[XLSX.utils.encode_cell({ r: R, c })] = { v: "", s: cs(false, 8, "FFFFFF", "FFFFFF", false) };
-      }
-      R++;
-
-      // ── 행3: 체험활동명 헤더
+      // ── 체험활동별 세로 배치
       activities.forEach((act, ai) => {
-        const sc = ai * (colsPerAct + gapCols);
         const n  = alloc[ci] ? alloc[ci][ai] : 0;
         const bg = ACT_COLORS[ai % ACT_COLORS.length];
-        for (let c = sc; c < sc + colsPerAct; c++) {
+
+        // 빈 행 (구분)
+        for (let c = 0; c < TOTAL_COLS; c++) {
+          ws[XLSX.utils.encode_cell({ r: R, c })] = { v: "", s: cs(false, 6, "FFFFFF", "FFFFFF", false) };
+        }
+        R++;
+
+        // 체험활동명 헤더
+        for (let c = 0; c < TOTAL_COLS; c++) {
           ws[XLSX.utils.encode_cell({ r: R, c })] = {
-            v: c === sc ? `${act.name}  (최대 ${n}명 / 전체 정원 ${act.capacity}명)` : "",
-            s: cs(true, 11, "FFFFFF", bg, false),
+            v: c === 0 ? `${act.name}  (배정 ${n}명 / 전체 정원 ${act.capacity}명)` : "",
+            s: cs(true, 12, "FFFFFF", bg, false, "center"),
           };
         }
-        merges.push({ s: { r: R, c: sc }, e: { r: R, c: sc + colsPerAct - 1 } });
-        // 간격 열
-        if (ai < actCount - 1) {
-          ws[XLSX.utils.encode_cell({ r: R, c: sc + colsPerAct })] = { v: "", s: cs(false, 8, "FFFFFF", "FFFFFF", false) };
-        }
-      });
-      R++;
+        merges.push({ s: { r: R, c: 0 }, e: { r: R, c: TOTAL_COLS - 1 } });
+        R++;
 
-      // ── 행4: 번호|학번|이름 헤더
-      activities.forEach((_, ai) => {
-        const sc = ai * (colsPerAct + gapCols);
+        // 컬럼 헤더
         ["번호", "학번", "이름"].forEach((label, j) => {
-          ws[XLSX.utils.encode_cell({ r: R, c: sc + j })] = {
-            v: label, s: cs(true, 10, "2D5016", HDR_BG, true),
+          ws[XLSX.utils.encode_cell({ r: R, c: j })] = {
+            v: label, s: cs(true, 10, "2D5016", HDR_BG, true, "center"),
           };
-        });
-        if (ai < actCount - 1) {
-          ws[XLSX.utils.encode_cell({ r: R, c: sc + colsPerAct })] = { v: "", s: cs(false, 8, "FFFFFF", "FFFFFF", false) };
-        }
-      });
-      R++;
-
-      // ── 행5~: 입력 행 (활동별 배정 인원만큼만)
-      for (let r = 0; r < maxRows; r++) {
-        activities.forEach((_, ai) => {
-          const sc     = ai * (colsPerAct + gapCols);
-          const hasRow = r < actRows[ai];
-          // 번호
-          ws[XLSX.utils.encode_cell({ r: R, c: sc })] = hasRow
-            ? { v: r + 1, s: { ...cs(false, 10, "888888", NUM_BG, true) } }
-            : { v: "", s: cs(false, 10, "CCCCCC", "EEEEEE", false) };
-          // 학번, 이름
-          [1, 2].forEach(j => {
-            ws[XLSX.utils.encode_cell({ r: R, c: sc + j })] = hasRow
-              ? { v: "", s: cs(false, 10, "000000", "FFFFFF", true) }
-              : { v: "", s: cs(false, 10, "CCCCCC", "EEEEEE", false) };
-          });
-          if (ai < actCount - 1) {
-            ws[XLSX.utils.encode_cell({ r: R, c: sc + colsPerAct })] = { v: "", s: cs(false, 8, "FFFFFF", "FFFFFF", false) };
-          }
         });
         R++;
-      }
 
-      // ref, cols, merges
-      ws["!ref"] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: R - 1, c: totalCols - 1 } });
-      const colWidths = [];
-      activities.forEach((_, ai) => {
-        colWidths.push({ wch: 6 }, { wch: 12 }, { wch: 12 });
-        if (ai < actCount - 1) colWidths.push({ wch: 2 });
+        // 입력 행
+        for (let r = 0; r < n; r++) {
+          ws[XLSX.utils.encode_cell({ r: R, c: 0 })] = {
+            v: r + 1, s: cs(false, 10, "888888", NUM_BG, true, "center"),
+          };
+          ws[XLSX.utils.encode_cell({ r: R, c: 1 })] = { v: "", s: cs(false, 10, "000000", "FFFFFF", true, "center") };
+          ws[XLSX.utils.encode_cell({ r: R, c: 2 })] = { v: "", s: cs(false, 10, "000000", "FFFFFF", true, "left") };
+          R++;
+        }
       });
-      ws["!cols"]   = colWidths;
+
+      ws["!ref"]    = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: R - 1, c: TOTAL_COLS - 1 } });
+      ws["!cols"]   = [{ wch: 6 }, { wch: 14 }, { wch: 14 }];
       ws["!merges"] = merges;
-      ws["!freeze"] = { xSplit: 0, ySplit: 5 };
+      // A4 세로 인쇄 설정
+      ws["!pageSetup"] = { paperSize: 9, orientation: "portrait", fitToPage: true, fitToWidth: 1, fitToHeight: 0 };
 
       XLSX.utils.book_append_sheet(wb, ws, cls.name.slice(0, 31));
     });
@@ -557,6 +552,119 @@ export default function App() {
   const unassigned = Object.values(classData).flat().filter(s => s.activity && !actNames.includes(s.activity));
   const overCapActs = activities.filter(act => (activityMap[act.name] || []).length > act.capacity);
 
+  // 학급별 안내문 다운로드
+  const downloadGuide = () => {
+    const ACT_COLORS = ["2D5016", "4A7C59", "6EA083"];
+    const HEAD_BG  = "2D5016";
+    const HDR_BG   = "E8F5D8";
+    const NUM_BG   = "F7F5F0";
+    const GUIDE_BG = "FFF9E6";
+
+    const cs = (bold, sz, color, bg, border, align) => ({
+      font:      { bold: bold||false, sz: sz||10, color: { rgb: color||"000000" }, name: "맑은 고딕" },
+      fill:      { patternType: "solid", fgColor: { rgb: bg||"FFFFFF" } },
+      alignment: { horizontal: align||"center", vertical: "center", wrapText: true },
+      border: border ? {
+        top:    { style: "thin", color: { rgb: "AAAAAA" } },
+        bottom: { style: "thin", color: { rgb: "AAAAAA" } },
+        left:   { style: "thin", color: { rgb: "AAAAAA" } },
+        right:  { style: "thin", color: { rgb: "AAAAAA" } },
+      } : {},
+    });
+
+    const wb = XLSX.utils.book_new();
+    const TOTAL_COLS = 4; // 번호 | 이름 | 체험활동 | 장소
+
+    // 학급별 학생 데이터 재구성 (activityMap에서 역으로)
+    const classStudentMap = {}; // {학급명: [{id, name, activity, location}]}
+    activities.forEach(act => {
+      const stus = activityMap[act.name] || [];
+      stus.forEach(stu => {
+        if (!classStudentMap[stu.class]) classStudentMap[stu.class] = [];
+        classStudentMap[stu.class].push({
+          id: stu.id, name: stu.name,
+          activity: act.name,
+          location: act.location || "-",
+        });
+      });
+    });
+
+    // 학번순 정렬
+    Object.keys(classStudentMap).forEach(cls => {
+      classStudentMap[cls].sort((a, b) => String(a.id).localeCompare(String(b.id), undefined, { numeric: true }));
+    });
+
+    classes.forEach(cls => {
+      const stus = classStudentMap[cls.name] || [];
+      const ws   = {};
+      const merges = [];
+      let R = 0;
+
+      // 제목
+      for (let c = 0; c < TOTAL_COLS; c++) {
+        ws[XLSX.utils.encode_cell({ r: R, c })] = {
+          v: c === 0 ? `[${cls.name}] 체험활동 이동 안내` : "",
+          s: cs(true, 14, "FFFFFF", HEAD_BG, false, "center"),
+        };
+      }
+      merges.push({ s: { r: R, c: 0 }, e: { r: R, c: TOTAL_COLS - 1 } });
+      R++;
+
+      // 안내사항
+      const notices = [
+        "본인이 신청한 체험활동 장소로 이동하세요.",
+        "필기도구를 반드시 지참하세요.",
+      ];
+      notices.forEach(notice => {
+        for (let c = 0; c < TOTAL_COLS; c++) {
+          ws[XLSX.utils.encode_cell({ r: R, c })] = {
+            v: c === 0 ? `📢 ${notice}` : "",
+            s: { ...cs(false, 10, "7A5C00", GUIDE_BG, false, "left") },
+          };
+        }
+        merges.push({ s: { r: R, c: 0 }, e: { r: R, c: TOTAL_COLS - 1 } });
+        R++;
+      });
+
+      // 빈 행
+      for (let c = 0; c < TOTAL_COLS; c++) {
+        ws[XLSX.utils.encode_cell({ r: R, c })] = { v: "", s: cs(false, 6, "FFFFFF", "FFFFFF", false) };
+      }
+      R++;
+
+      // 헤더
+      ["번호", "이름", "체험활동", "장소"].forEach((h, c) => {
+        ws[XLSX.utils.encode_cell({ r: R, c })] = {
+          v: h, s: cs(true, 10, "2D5016", HDR_BG, true, "center"),
+        };
+      });
+      R++;
+
+      // 학생 데이터
+      stus.forEach((stu, idx) => {
+        const actIdx = activities.findIndex(a => a.name === stu.activity);
+        const rowBg  = idx % 2 === 0 ? "F7F5F0" : "FFFFFF";
+        const actBg  = actIdx >= 0 ? ACT_COLORS[actIdx % ACT_COLORS.length] : "888888";
+
+        ws[XLSX.utils.encode_cell({ r: R, c: 0 })] = { v: idx+1, s: cs(false, 10, "888888", NUM_BG, true, "center") };
+        ws[XLSX.utils.encode_cell({ r: R, c: 1 })] = { v: stu.name, s: cs(true, 10, "000000", rowBg, true, "left") };
+        ws[XLSX.utils.encode_cell({ r: R, c: 2 })] = { v: stu.activity, s: cs(true, 10, "FFFFFF", actBg, true, "center") };
+        ws[XLSX.utils.encode_cell({ r: R, c: 3 })] = { v: stu.location, s: cs(false, 10, "000000", rowBg, true, "center") };
+        R++;
+      });
+
+      ws["!ref"]      = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: R - 1, c: TOTAL_COLS - 1 } });
+      ws["!cols"]     = [{ wch: 5 }, { wch: 12 }, { wch: 16 }, { wch: 14 }];
+      ws["!merges"]   = merges;
+      ws["!freeze"]   = { xSplit: 0, ySplit: R - stus.length };
+      ws["!pageSetup"] = { paperSize: 9, orientation: "portrait", fitToPage: true, fitToWidth: 1, fitToHeight: 0 };
+
+      XLSX.utils.book_append_sheet(wb, ws, cls.name.slice(0, 31));
+    });
+
+    XLSX.writeFile(wb, "체험활동_학급별_안내문.xlsx");
+  };
+
   const STEPS = [
     { n: 1, label: "기본 설정" },
     { n: 2, label: "배분표 조정 & 서식 다운로드" },
@@ -575,12 +683,12 @@ export default function App() {
         <div style={{ maxWidth: 860, margin: "0 auto", width: "100%" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
             <div>
-              <div style={{ fontSize: 11, letterSpacing: 2, opacity: .7, marginBottom: 4 }}>진로체험 분반 출석부 자동 생성기</div>
+              <div style={{ fontSize: 10, letterSpacing: 1, opacity: .7, marginBottom: 4 }}>진로체험 분반 출석부 자동 생성기</div>
               <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800 }}>출석부 생성 마법사 🧙‍♀️</h1>
             </div>
             <button onClick={() => setShowGuide(true)} style={{
-              padding: "7px 14px", borderRadius: 20, border: "1.5px solid rgba(255,255,255,0.5)",
-              background: "transparent", color: "#fff", fontSize: 13, fontWeight: 600,
+              padding: "5px 10px", borderRadius: 20, border: "1.5px solid rgba(255,255,255,0.5)",
+              background: "transparent", color: "#fff", fontSize: 11, fontWeight: 600,
               cursor: "pointer", fontFamily: "inherit", marginTop: 4, whiteSpace: "nowrap",
             }}>📖 사용 안내</button>
           </div>
@@ -589,14 +697,16 @@ export default function App() {
 
       <div style={{ maxWidth: 860, margin: "0 auto", padding: "22px clamp(16px, 5vw, 40px) 0", boxSizing: "border-box" }}>
         {/* 스텝 바 */}
-        <div style={{ display: "flex", alignItems: "center", marginBottom: 22 }}>
+        <div style={{ display: "flex", alignItems: "center", marginBottom: 16 }}>
           {STEPS.map(({ n, label }, i) => (
             <div key={n} style={{ display: "flex", alignItems: "center", flex: i < STEPS.length - 1 ? 1 : "none" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 7, cursor: step > n ? "pointer" : "default" }} onClick={() => step > n && setStep(n)}>
+              <div style={{ display: "flex", alignItems: "center", gap: 5, cursor: step > n ? "pointer" : "default" }} onClick={() => step > n && setStep(n)}>
                 <StepBadge n={n} active={step === n} done={step > n} />
-                <span style={{ fontSize: 11, fontWeight: step === n ? 700 : 400, color: step === n ? C.primary : step > n ? C.accent : C.muted, whiteSpace: "nowrap" }}>{label}</span>
+                {step === n && (
+                  <span style={{ fontSize: 11, fontWeight: 700, color: C.primary, whiteSpace: "nowrap" }}>{label}</span>
+                )}
               </div>
-              {i < STEPS.length - 1 && <div style={{ flex: 1, height: 2, margin: "0 8px", background: step > n ? C.accent : C.border }} />}
+              {i < STEPS.length - 1 && <div style={{ flex: 1, height: 2, margin: "0 6px", background: step > n ? C.accent : C.border }} />}
             </div>
           ))}
         </div>
@@ -606,11 +716,33 @@ export default function App() {
           <Card>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
               <h2 style={{ margin: 0, fontSize: 15, color: C.primary }}>⚙️ 기본 설정</h2>
-              <button onClick={resetSettings} style={{
-                padding: "5px 12px", borderRadius: 8, border: `1px solid ${C.border}`,
-                background: C.bg, color: C.muted, fontSize: 12, cursor: "pointer", fontFamily: "inherit",
-              }}>🔄 초기화</button>
+              <div style={{ display: "flex", gap: 6 }}>
+                <button onClick={() => setShowPresetModal(true)} style={{
+                  padding: "5px 12px", borderRadius: 8, border: `1px solid ${C.accent}`,
+                  background: C.accent2, color: C.primary, fontSize: 12, cursor: "pointer", fontFamily: "inherit", fontWeight: 600,
+                }}>💾 프리셋</button>
+                <button onClick={resetSettings} style={{
+                  padding: "5px 12px", borderRadius: 8, border: `1px solid ${C.border}`,
+                  background: C.bg, color: C.muted, fontSize: 12, cursor: "pointer", fontFamily: "inherit",
+                }}>🔄 초기화</button>
+              </div>
             </div>
+
+            {/* 프리셋 목록 */}
+            {presets.length > 0 && (
+              <div style={{ display: "flex", gap: 7, flexWrap: "wrap", marginBottom: 16 }}>
+                {presets.map(p => (
+                  <div key={p.name} style={{ display: "flex", alignItems: "center", gap: 5, background: C.infoBg, border: `1px solid ${C.infoBorder}`, borderRadius: 10, padding: "5px 10px" }}>
+                    <div>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: C.info }}>{p.name}</div>
+                      <div style={{ fontSize: 10, color: C.muted }}>{p.savedAt}</div>
+                    </div>
+                    <button onClick={() => loadPreset(p)} style={{ padding: "3px 8px", borderRadius: 6, border: "none", background: C.info, color: "#fff", fontSize: 11, cursor: "pointer", fontFamily: "inherit" }}>불러오기</button>
+                    <button onClick={() => deletePreset(p.name)} style={{ padding: "3px 6px", borderRadius: 6, border: "none", background: "#FEE", color: C.danger, fontSize: 11, cursor: "pointer" }}>✕</button>
+                  </div>
+                ))}
+              </div>
+            )}
 
             {/* 교시 */}
             <div style={{ marginBottom: 22 }}>
@@ -651,7 +783,7 @@ export default function App() {
                 <input value={newCls.name} onChange={e => setNewCls(p=>({...p,name:e.target.value}))}
                   onKeyDown={e => { if(e.key==="Enter"){ const v=newCls.name.trim(); if(v){setClasses(p=>[...p,{name:v,size:newCls.size}]);setNewCls({name:"",size:30});}}}}
                   placeholder="학급 이름 입력 후 Enter"
-                  style={{ ...inp, flex: 2, border: `1.5px dashed ${C.accent}`, background: C.accent2 }} />
+                  style={{ ...inp, flex: 1, minWidth: 0, border: `1.5px dashed ${C.accent}`, background: C.accent2 }} />
                 <input type="number" value={newCls.size} min={1} onChange={e => setNewCls(p=>({...p,size:Number(e.target.value)||30}))}
                   style={{ ...inp, width: 70, textAlign: "center" }} />
                 <span style={{ fontSize: 12, color: C.muted }}>명</span>
@@ -667,7 +799,7 @@ export default function App() {
                   <div key={act.id} style={{ display: "flex", gap: 8, alignItems: "center" }}>
                     <div style={{ width: 6, height: 6, borderRadius: "50%", background: C.accent, flexShrink: 0 }} />
                     <input value={act.name} onChange={e => setActivities(p=>p.map(a=>a.id===act.id?{...a,name:e.target.value}:a))}
-                      style={{ ...inp, flex: 2 }} />
+                      style={{ ...inp, flex: 1, minWidth: 0 }} />
                     <input type="number" value={act.capacity} min={0} onChange={e => setActivities(p=>p.map(a=>a.id===act.id?{...a,capacity:Number(e.target.value)||0}:a))}
                       style={{ ...inp, width: 70, textAlign: "center" }} />
                     <span style={{ fontSize: 12, color: C.muted }}>명</span>
@@ -676,16 +808,17 @@ export default function App() {
                   </div>
                 ))}
               </div>
-              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                <div style={{ width: 6, height: 6, borderRadius: "50%", background: C.border, flexShrink: 0 }} />
+              <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
                 <input value={newAct.name} onChange={e=>setNewAct(p=>({...p,name:e.target.value}))}
                   onKeyDown={e=>{if(e.key==="Enter"){const v=newAct.name.trim();if(v){setActivities(p=>[...p,{id:Date.now(),name:v,capacity:newAct.capacity}]);setNewAct({name:"",capacity:30});}}}}
                   placeholder="새 체험활동 이름"
-                  style={{ ...inp, flex: 2, border: `1.5px dashed ${C.accent}`, background: C.accent2 }} />
-                <input type="number" value={newAct.capacity} min={0} onChange={e=>setNewAct(p=>({...p,capacity:Number(e.target.value)||0}))}
-                  style={{ ...inp, width: 70, textAlign: "center" }} />
-                <span style={{ fontSize: 12, color: C.muted }}>명</span>
-                <Btn variant="accent" onClick={()=>{const v=newAct.name.trim();if(v){setActivities(p=>[...p,{id:Date.now(),name:v,capacity:newAct.capacity}]);setNewAct({name:"",capacity:30});}}}>+ 추가</Btn>
+                  style={{ ...inp, width: "100%", border: `1.5px dashed ${C.accent}`, background: C.accent2 }} />
+                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <input type="number" value={newAct.capacity} min={0} onChange={e=>setNewAct(p=>({...p,capacity:Number(e.target.value)||0}))}
+                    style={{ ...inp, flex: 1, textAlign: "center" }} />
+                  <span style={{ fontSize: 12, color: C.muted }}>명</span>
+                  <Btn variant="accent" onClick={()=>{const v=newAct.name.trim();if(v){setActivities(p=>[...p,{id:Date.now(),name:v,capacity:newAct.capacity}]);setNewAct({name:"",capacity:30});}}} style={{ flex: 1 }}>+ 추가</Btn>
+                </div>
               </div>
             </div>
           </Card>
@@ -711,7 +844,7 @@ export default function App() {
             </div>
           )}
 
-          <Btn onClick={() => { computeAlloc(); setStep(2); }}
+          <Btn onClick={() => { if (alloc.length === 0) computeAlloc(); setStep(2); }}
             disabled={classes.length === 0 || activities.length === 0 || selectedPeriods.length === 0 || totalCap < totalStudents}
             style={{ width: "100%" }}>
             다음: 배분표 확인 & 서식 다운로드 →
@@ -723,7 +856,10 @@ export default function App() {
           <Card>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
               <h2 style={{ margin: 0, fontSize: 15, color: C.primary }}>📊 학급별 체험활동 배분표</h2>
-              <Btn variant="ghost" onClick={computeAlloc} style={{ fontSize: 12, padding: "6px 14px" }}>🔄 자동 재계산</Btn>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                {allocSaved && <span style={{ fontSize: 11, color: C.accent, fontWeight: 600 }}>✅ 저장됨</span>}
+                <Btn variant="ghost" onClick={computeAlloc} style={{ fontSize: 12, padding: "6px 14px" }}>🔄 자동 재계산</Btn>
+              </div>
             </div>
             <p style={{ margin: "0 0 16px", fontSize: 13, color: C.muted }}>
               각 학급 인원을 체험활동 정원 비율에 맞게 자동 배분했습니다.<br />
@@ -1018,6 +1154,59 @@ export default function App() {
         </>)}
       </div>
 
+      {/* 프리셋 저장 모달 */}
+      {showPresetModal && (
+        <div style={{
+          position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
+          background: "rgba(0,0,0,0.5)", zIndex: 1000,
+          display: "flex", alignItems: "center", justifyContent: "center", padding: 20,
+        }} onClick={() => setShowPresetModal(false)}>
+          <div style={{
+            background: C.card, borderRadius: 20, padding: "28px",
+            maxWidth: 400, width: "100%",
+            boxShadow: "0 8px 40px rgba(0,0,0,0.2)",
+          }} onClick={e => e.stopPropagation()}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+              <h2 style={{ margin: 0, fontSize: 16, color: C.primary }}>💾 프리셋 저장</h2>
+              <button onClick={() => setShowPresetModal(false)} style={{ border: "none", background: "transparent", fontSize: 20, cursor: "pointer", color: C.muted }}>✕</button>
+            </div>
+            <p style={{ margin: "0 0 16px", fontSize: 13, color: C.muted }}>
+              현재 설정(학급, 체험활동, 교시, 배분표)을 저장해요.<br />
+              최대 4개까지 저장 가능합니다.
+            </p>
+            <input
+              value={presetName}
+              onChange={e => setPresetName(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && savePreset()}
+              placeholder="프리셋 이름 (예: 1학년 3교시)"
+              style={{
+                width: "100%", padding: "10px 14px", borderRadius: 10,
+                border: `1.5px solid ${C.accent}`, fontSize: 14,
+                fontFamily: "inherit", outline: "none", boxSizing: "border-box",
+                marginBottom: 12,
+              }}
+              autoFocus
+            />
+            {presets.length >= 4 && (
+              <div style={{ fontSize: 12, color: C.warn, marginBottom: 10 }}>
+                ⚠️ 4개가 저장되어 있어요. 같은 이름으로 저장하면 덮어쓰고, 새 이름이면 가장 오래된 게 삭제돼요.
+              </div>
+            )}
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={() => setShowPresetModal(false)} style={{
+                flex: 1, padding: "10px", borderRadius: 10, border: `1.5px solid ${C.border}`,
+                background: C.bg, color: C.muted, fontSize: 14, cursor: "pointer", fontFamily: "inherit",
+              }}>취소</button>
+              <button onClick={savePreset} style={{
+                flex: 2, padding: "10px", borderRadius: 10, border: "none",
+                background: C.primary, color: "#fff", fontSize: 14, fontWeight: 700,
+                cursor: "pointer", fontFamily: "inherit",
+              }}>저장</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 사용 안내 모달 */}
       {showGuide && (
         <div style={{
@@ -1062,9 +1251,9 @@ export default function App() {
                   <span style={{ background: color, color: "#fff", borderRadius: 20, padding: "2px 10px", fontSize: 11, fontWeight: 700 }}>{step}</span>
                   <span style={{ fontSize: 14, fontWeight: 700, color: C.primary }}>{title}</span>
                 </div>
-                <ul style={{ margin: 0, paddingLeft: 18 }}>
+                <ul style={{ margin: 0, paddingLeft: 18, textAlign: "left" }}>
                   {items.map((item, i) => (
-                    <li key={i} style={{ fontSize: 13, color: C.text, lineHeight: 1.8 }}>{item}</li>
+                    <li key={i} style={{ fontSize: 12, color: C.text, lineHeight: 1.8, textAlign: "left" }}>{item}</li>
                   ))}
                 </ul>
               </div>

@@ -437,7 +437,9 @@ export default function App() {
             // 파일 1개에 시트 여러 개 = 각 시트명이 학급명
             wb.SheetNames.forEach(sheetName => {
               const students = parseSheet(wb.Sheets[sheetName], sheetName);
-              if (students && students.length > 0) {
+              if (students === null) {
+                errors.push(`${sheetName}: 학번/이름/체험활동 컬럼을 찾지 못했습니다`);
+              } else if (students.length > 0) {
                 newData[sheetName] = students;
               }
             });

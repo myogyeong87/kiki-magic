@@ -347,62 +347,77 @@ export default function App() {
     function parseSheet(ws, sheetName) {
       const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
 
-      // ── 새 서식: 체험활동별 열 배치 감지
-      // 행3: 체험활동명(최대 N명 / 배정 N명 등) 헤더, 행4: 번호|학번|이름 반복
-      // 그룹이 1개(체험활동 1개)든 여러 개든 동일하게 처리
-      let dataHeaderRow = -1;
-      for (let i = 0; i < rows.length; i++) {
-        const cells = rows[i].map(c => String(c).trim());
-        if (cells.includes("학번")) { dataHeaderRow = i; break; }
+      // ── 새 서식: 체험활동별 "제목행 + 번호|학번|이름" 블록 감지
+      // 블록은 한 행 안에 여러 개가 가로로 나란히 있을 수도(같은 헤더 행에 번호가 여러 번),
+      // 활동마다 세로로 반복될 수도 있음(제목→헤더→명단→빈 줄→다음 제목→...) → 둘 다 지원
+      const trimmedRows = rows.map(r => r.map(c => String(c).trim()));
+      const headerRowIdxs = [];
+      for (let i = 0; i < trimmedRows.length; i++) {
+        const cells = trimmedRows[i];
+        if (cells.includes("번호") && cells.includes("학번") && cells.some(c => /^이름$|^성명$/.test(c))) {
+          headerRowIdxs.push(i);
+        }
       }
-      if (dataHeaderRow < 0) return null;
-
-      const actHeaderRow = dataHeaderRow - 1;
-      const actTitleRow  = actHeaderRow >= 0 ? rows[actHeaderRow].map(c => String(c).trim()) : [];
-      const headerRow    = rows[dataHeaderRow].map(c => String(c).trim());
 
       const students = [];
 
-      // 각 "번호" 열 위치를 기준으로 그룹 분리 (체험활동명은 바로 위 행에서 탐색)
-      const groups = [];
-      headerRow.forEach((h, ci) => {
-        if (h === "번호") {
-          // 이 열에서 왼쪽으로 체험활동명 찾기
-          let actName = "";
-          for (let c = ci; c >= 0; c--) {
-            if (actTitleRow[c]) { actName = actTitleRow[c].replace(/\s*\(.*\)\s*$/, "").trim(); break; }
-          }
-          const idCol   = ci + 1;
-          const nameCol = ci + 2;
-          if (actName) groups.push({ actName, idCol, nameCol });
-        }
-      });
+      if (headerRowIdxs.length > 0) {
+        headerRowIdxs.forEach((hRow, bi) => {
+          const headerRow = trimmedRows[hRow];
 
-      if (groups.length > 0) {
-        // ── 새 서식 파싱: 체험활동별 열 그룹
-        for (let r = dataHeaderRow + 1; r < rows.length; r++) {
-          const row = rows[r];
-          groups.forEach(({ actName, idCol, nameCol }) => {
-            const sid   = String(row[idCol]   ?? "").trim();
-            const sname = String(row[nameCol]  ?? "").trim();
-            if (!sid && !sname) return;
-            students.push({ id: sid, name: sname, activity: actName });
+          // 이 블록의 제목행: 바로 위쪽에서 처음 만나는 비어있지 않은 행
+          let titleRowIdx = hRow - 1;
+          while (titleRowIdx >= 0 && trimmedRows[titleRowIdx].every(c => c === "")) titleRowIdx--;
+          const actTitleRow = titleRowIdx >= 0 ? trimmedRows[titleRowIdx] : [];
+
+          // 각 "번호" 열 위치를 기준으로 그룹 분리 (체험활동명은 제목행에서 탐색)
+          const groups = [];
+          headerRow.forEach((h, ci) => {
+            if (h === "번호") {
+              let actName = "";
+              for (let c = ci; c >= 0; c--) {
+                if (actTitleRow[c]) { actName = actTitleRow[c].replace(/\s*\(.*\)\s*$/, "").trim(); break; }
+              }
+              const idCol   = ci + 1;
+              const nameCol = ci + 2;
+              if (actName) groups.push({ actName, idCol, nameCol });
+            }
           });
-        }
-      } else {
-        // ── 구 서식 파싱: 학번|이름|체험활동명 단일 열
-        const idCol   = headerRow.findIndex(h => /^학번$|^번호$/.test(h));
-        const nameCol = headerRow.findIndex(h => /^이름$|^성명$/.test(h));
-        const actCol  = headerRow.findIndex(h => /체험|활동/i.test(h));
-        if (idCol < 0 || nameCol < 0 || actCol < 0) return null;
-        for (let i = dataHeaderRow + 1; i < rows.length; i++) {
-          const row = rows[i];
-          const sid   = String(row[idCol]   ?? "").trim();
-          const sname = String(row[nameCol]  ?? "").trim();
-          const sact  = String(row[actCol]   ?? "").trim();
-          if (!sid && !sname) continue;
-          students.push({ id: sid, name: sname, activity: sact });
-        }
+
+          // 이 블록의 데이터는 다음 블록의 헤더 행 전까지 (없으면 시트 끝까지)
+          const endRow = bi + 1 < headerRowIdxs.length ? headerRowIdxs[bi + 1] : rows.length;
+          for (let r = hRow + 1; r < endRow; r++) {
+            const row = rows[r];
+            groups.forEach(({ actName, idCol, nameCol }) => {
+              const sid   = String(row[idCol]   ?? "").trim();
+              const sname = String(row[nameCol]  ?? "").trim();
+              if (!sid && !sname) return;
+              students.push({ id: sid, name: sname, activity: actName });
+            });
+          }
+        });
+        return students;
+      }
+
+      // ── 구 서식 파싱: 학번|이름|체험활동명 단일 열 (제목행 없이 헤더가 한 번만 등장)
+      let dataHeaderRow = -1;
+      for (let i = 0; i < trimmedRows.length; i++) {
+        if (trimmedRows[i].includes("학번")) { dataHeaderRow = i; break; }
+      }
+      if (dataHeaderRow < 0) return null;
+
+      const headerRow = trimmedRows[dataHeaderRow];
+      const idCol   = headerRow.findIndex(h => /^학번$|^번호$/.test(h));
+      const nameCol = headerRow.findIndex(h => /^이름$|^성명$/.test(h));
+      const actCol  = headerRow.findIndex(h => /체험|활동/i.test(h));
+      if (idCol < 0 || nameCol < 0 || actCol < 0) return null;
+      for (let i = dataHeaderRow + 1; i < rows.length; i++) {
+        const row = rows[i];
+        const sid   = String(row[idCol]   ?? "").trim();
+        const sname = String(row[nameCol]  ?? "").trim();
+        const sact  = String(row[actCol]   ?? "").trim();
+        if (!sid && !sname) continue;
+        students.push({ id: sid, name: sname, activity: sact });
       }
 
       return students;

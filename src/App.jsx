@@ -804,6 +804,8 @@ export default function App() {
                     <div style={{ width: 6, height: 6, borderRadius: "50%", background: C.accent, flexShrink: 0 }} />
                     <input value={act.name} onChange={e => setActivities(p=>p.map(a=>a.id===act.id?{...a,name:e.target.value}:a))}
                       style={{ ...inp, flex: 1, minWidth: 0 }} />
+                    <input value={act.location || ""} onChange={e => setActivities(p=>p.map(a=>a.id===act.id?{...a,location:e.target.value}:a))}
+                      placeholder="장소" style={{ ...inp, width: 70, minWidth: 0 }} />
                     <input type="number" value={act.capacity} min={0} onChange={e => setActivities(p=>p.map(a=>a.id===act.id?{...a,capacity:Number(e.target.value)||0}:a))}
                       style={{ ...inp, width: 70, textAlign: "center" }} />
                     <span style={{ fontSize: 12, color: C.muted }}>명</span>
@@ -814,14 +816,16 @@ export default function App() {
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
                 <input value={newAct.name} onChange={e=>setNewAct(p=>({...p,name:e.target.value}))}
-                  onKeyDown={e=>{if(e.key==="Enter"){const v=newAct.name.trim();if(v){setActivities(p=>[...p,{id:Date.now(),name:v,capacity:newAct.capacity}]);setNewAct({name:"",capacity:30});}}}}
+                  onKeyDown={e=>{if(e.key==="Enter"){const v=newAct.name.trim();if(v){setActivities(p=>[...p,{id:Date.now(),name:v,capacity:newAct.capacity,location:newAct.location}]);setNewAct({name:"",capacity:30,location:""});}}}}
                   placeholder="새 체험활동 이름"
                   style={{ ...inp, width: "100%", border: `1.5px dashed ${C.accent}`, background: C.accent2 }} />
                 <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <input value={newAct.location} onChange={e=>setNewAct(p=>({...p,location:e.target.value}))}
+                    placeholder="장소" style={{ ...inp, flex: 1 }} />
                   <input type="number" value={newAct.capacity} min={0} onChange={e=>setNewAct(p=>({...p,capacity:Number(e.target.value)||0}))}
-                    style={{ ...inp, flex: 1, textAlign: "center" }} />
+                    style={{ ...inp, width: 70, textAlign: "center" }} />
                   <span style={{ fontSize: 12, color: C.muted }}>명</span>
-                  <Btn variant="accent" onClick={()=>{const v=newAct.name.trim();if(v){setActivities(p=>[...p,{id:Date.now(),name:v,capacity:newAct.capacity}]);setNewAct({name:"",capacity:30});}}} style={{ flex: 1 }}>+ 추가</Btn>
+                  <Btn variant="accent" onClick={()=>{const v=newAct.name.trim();if(v){setActivities(p=>[...p,{id:Date.now(),name:v,capacity:newAct.capacity,location:newAct.location}]);setNewAct({name:"",capacity:30,location:""});}}} style={{ flex: 1 }}>+ 추가</Btn>
                 </div>
               </div>
             </div>
@@ -1153,6 +1157,9 @@ export default function App() {
             <Btn variant="ghost" onClick={() => setStep(3)}>← 다시 업로드</Btn>
             <Btn variant="accent" onClick={downloadAttendance} style={{ flex: 1, fontSize: 14, padding: "12px" }}>
               📥 출석부 엑셀 다운로드 (.xlsx)
+            </Btn>
+            <Btn variant="accent" onClick={downloadGuide} style={{ flex: 1, fontSize: 14, padding: "12px" }}>
+              🗺️ 학급별 안내문 다운로드
             </Btn>
           </div>
         </>)}

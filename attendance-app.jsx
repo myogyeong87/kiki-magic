@@ -348,50 +348,38 @@ export default function App() {
       const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" });
 
       // ── 새 서식: 체험활동별 열 배치 감지
-      // 행3: 체험활동명(최대 N명) 헤더, 행4: 번호|학번|이름 반복
-      // 행4에 "번호"+"학번"+"이름"이 여러 세트 있으면 새 서식
-      let actHeaderRow = -1;
+      // 행3: 체험활동명(최대 N명 / 배정 N명 등) 헤더, 행4: 번호|학번|이름 반복
+      // 그룹이 1개(체험활동 1개)든 여러 개든 동일하게 처리
       let dataHeaderRow = -1;
       for (let i = 0; i < rows.length; i++) {
         const cells = rows[i].map(c => String(c).trim());
-        const idCount = cells.filter(c => c === "학번").length;
-        if (idCount >= 1) {
-          // 학번이 여러 개 = 새 서식 / 1개 = 구 서식
-          if (idCount > 1) {
-            actHeaderRow = i - 1;
-            dataHeaderRow = i;
-          } else {
-            // 구 서식: 학번+이름 같은 행
-            const hasName = cells.some(c => /^이름$|^성명$/.test(c));
-            if (hasName) dataHeaderRow = i;
-          }
-          break;
-        }
+        if (cells.includes("학번")) { dataHeaderRow = i; break; }
       }
       if (dataHeaderRow < 0) return null;
 
+      const actHeaderRow = dataHeaderRow - 1;
+      const actTitleRow  = actHeaderRow >= 0 ? rows[actHeaderRow].map(c => String(c).trim()) : [];
+      const headerRow    = rows[dataHeaderRow].map(c => String(c).trim());
+
       const students = [];
 
-      if (actHeaderRow >= 0) {
-        // ── 새 서식 파싱: 체험활동별 열 그룹
-        const actTitleRow = rows[actHeaderRow].map(c => String(c).trim());
-        const headerRow   = rows[dataHeaderRow].map(c => String(c).trim());
-
-        // 각 "번호" 열 위치를 기준으로 그룹 분리
-        const groups = [];
-        headerRow.forEach((h, ci) => {
-          if (h === "번호") {
-            // 이 열에서 왼쪽으로 체험활동명 찾기
-            let actName = "";
-            for (let c = ci; c >= 0; c--) {
-              if (actTitleRow[c]) { actName = actTitleRow[c].replace(/\s*\(최대.*?\)/, "").trim(); break; }
-            }
-            const idCol   = ci + 1;
-            const nameCol = ci + 2;
-            if (actName) groups.push({ actName, idCol, nameCol });
+      // 각 "번호" 열 위치를 기준으로 그룹 분리 (체험활동명은 바로 위 행에서 탐색)
+      const groups = [];
+      headerRow.forEach((h, ci) => {
+        if (h === "번호") {
+          // 이 열에서 왼쪽으로 체험활동명 찾기
+          let actName = "";
+          for (let c = ci; c >= 0; c--) {
+            if (actTitleRow[c]) { actName = actTitleRow[c].replace(/\s*\(.*\)\s*$/, "").trim(); break; }
           }
-        });
+          const idCol   = ci + 1;
+          const nameCol = ci + 2;
+          if (actName) groups.push({ actName, idCol, nameCol });
+        }
+      });
 
+      if (groups.length > 0) {
+        // ── 새 서식 파싱: 체험활동별 열 그룹
         for (let r = dataHeaderRow + 1; r < rows.length; r++) {
           const row = rows[r];
           groups.forEach(({ actName, idCol, nameCol }) => {
@@ -403,10 +391,9 @@ export default function App() {
         }
       } else {
         // ── 구 서식 파싱: 학번|이름|체험활동명 단일 열
-        const header  = rows[dataHeaderRow].map(h => String(h).trim());
-        const idCol   = header.findIndex(h => /^학번$|^번호$/.test(h));
-        const nameCol = header.findIndex(h => /^이름$|^성명$/.test(h));
-        const actCol  = header.findIndex(h => /체험|활동/i.test(h));
+        const idCol   = headerRow.findIndex(h => /^학번$|^번호$/.test(h));
+        const nameCol = headerRow.findIndex(h => /^이름$|^성명$/.test(h));
+        const actCol  = headerRow.findIndex(h => /체험|활동/i.test(h));
         if (idCol < 0 || nameCol < 0 || actCol < 0) return null;
         for (let i = dataHeaderRow + 1; i < rows.length; i++) {
           const row = rows[i];

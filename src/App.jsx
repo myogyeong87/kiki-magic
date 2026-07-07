@@ -577,7 +577,7 @@ export default function App() {
     });
 
     const wb = XLSX.utils.book_new();
-    const TOTAL_COLS = 4; // 번호 | 이름 | 체험활동 | 장소
+    const TOTAL_COLS = 4; // 학번 | 이름 | 체험활동 | 장소
 
     // 학급별 학생 데이터 재구성 (activityMap에서 역으로)
     const classStudentMap = {}; // {학급명: [{id, name, activity, location}]}
@@ -637,7 +637,7 @@ export default function App() {
       R++;
 
       // 헤더
-      ["번호", "이름", "체험활동", "장소"].forEach((h, c) => {
+      ["학번", "이름", "체험활동", "장소"].forEach((h, c) => {
         ws[XLSX.utils.encode_cell({ r: R, c })] = {
           v: h, s: cs(true, 10, "2D5016", HDR_BG, true, "center"),
         };
@@ -650,7 +650,7 @@ export default function App() {
         const rowBg  = idx % 2 === 0 ? "F7F5F0" : "FFFFFF";
         const actBg  = actIdx >= 0 ? ACT_COLORS[actIdx % ACT_COLORS.length] : "888888";
 
-        ws[XLSX.utils.encode_cell({ r: R, c: 0 })] = { v: idx+1, s: cs(false, 10, "888888", NUM_BG, true, "center") };
+        ws[XLSX.utils.encode_cell({ r: R, c: 0 })] = { v: stu.id, s: cs(false, 10, "888888", NUM_BG, true, "center") };
         ws[XLSX.utils.encode_cell({ r: R, c: 1 })] = { v: stu.name, s: cs(true, 10, "000000", rowBg, true, "left") };
         ws[XLSX.utils.encode_cell({ r: R, c: 2 })] = { v: stu.activity, s: cs(true, 10, "FFFFFF", actBg, true, "center") };
         ws[XLSX.utils.encode_cell({ r: R, c: 3 })] = { v: stu.location, s: cs(false, 10, "000000", rowBg, true, "center") };
@@ -658,7 +658,7 @@ export default function App() {
       });
 
       ws["!ref"]      = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: R - 1, c: TOTAL_COLS - 1 } });
-      ws["!cols"]     = [{ wch: 5 }, { wch: 12 }, { wch: 16 }, { wch: 14 }];
+      ws["!cols"]     = [{ wch: 8 }, { wch: 12 }, { wch: 16 }, { wch: 14 }];
       ws["!merges"]   = merges;
       ws["!freeze"]   = { xSplit: 0, ySplit: R - stus.length };
       ws["!pageSetup"] = { paperSize: 9, orientation: "portrait", fitToPage: true, fitToWidth: 1, fitToHeight: 0 };

@@ -605,9 +605,10 @@ export default function App() {
       let R = 0;
 
       // 제목
+      const periodText = selectedPeriods.length > 0 ? ` (${selectedPeriods.map(p => `${p}교시`).join("·")})` : "";
       for (let c = 0; c < TOTAL_COLS; c++) {
         ws[XLSX.utils.encode_cell({ r: R, c })] = {
-          v: c === 0 ? `[${cls.name}] 체험활동 이동 안내` : "",
+          v: c === 0 ? `[${cls.name}] 체험활동 이동 안내${periodText}` : "",
           s: cs(true, 14, "FFFFFF", HEAD_BG, false, "center"),
         };
       }
